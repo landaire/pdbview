@@ -7,17 +7,17 @@ use std::rc::Rc;
 
 /// Represents a PDB that has been fully parsed
 #[derive(Debug, Serialize)]
-pub struct ParsedPdb<'a> {
+pub struct ParsedPdb {
     pub path: PathBuf,
     pub assembly_info: Option<AssemblyInfo>,
-    pub public_symbols: Vec<PublicSymbol<'a>>,
-    pub types: Vec<Rc<Type<'a>>>,
-    pub procedures: Vec<Procedure<'a>>,
-    pub global_data: Vec<Data<'a>>,
-    pub debug_modules: Vec<DebugModule<'a>>,
+    pub public_symbols: Vec<PublicSymbol>,
+    pub types: Vec<Rc<Type>>,
+    pub procedures: Vec<Procedure>,
+    pub global_data: Vec<Data>,
+    pub debug_modules: Vec<DebugModule>,
 }
 
-impl<'a> ParsedPdb<'a> {
+impl ParsedPdb {
     /// Constructs a new [ParsedPdb] with the corresponding path
     pub fn new(path: PathBuf) -> Self {
         ParsedPdb {
@@ -72,25 +72,23 @@ impl From<&pdb::CompilerVersion> for CompilerVersion {
 }
 
 #[derive(Debug, Serialize)]
-pub struct DebugModule<'a> {
-    #[serde(borrow)]
-    name: Cow<'a, str>,
-    #[serde(borrow)]
-    object_file_name: Cow<'a, str>,
+pub struct DebugModule {
+    name: String,
+    object_file_name: String,
 }
 
-impl<'a> From<pdb::Module<'a>> for DebugModule<'a> {
-    fn from(module: pdb::Module<'a>) -> Self {
+impl From<&pdb::Module<'_>> for DebugModule {
+    fn from(module: &pdb::Module<'_>) -> Self {
         DebugModule {
-            name: module.module_name(),
-            object_file_name: module.object_file_name(),
+            name: module.module_name().to_string(),
+            object_file_name: module.object_file_name().to_string(),
         }
     }
 }
 
 #[derive(Debug, Serialize)]
-pub struct PublicSymbol<'a> {
-    name: Cow<'a, str>,
+pub struct PublicSymbol {
+    name: String,
     is_code: bool,
     is_function: bool,
     is_managed: bool,
@@ -98,8 +96,8 @@ pub struct PublicSymbol<'a> {
     offset: Option<usize>,
 }
 
-impl<'a> From<(pdb::PublicSymbol<'a>, usize, &pdb::AddressMap<'_>)> for PublicSymbol<'a> {
-    fn from(data: (pdb::PublicSymbol<'a>, usize, &pdb::AddressMap<'_>)) -> Self {
+impl From<(pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)> for PublicSymbol {
+    fn from(data: (pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)) -> Self {
         let (sym, base_address, address_map) = data;
 
         let pdb::PublicSymbol {
@@ -123,7 +121,7 @@ impl<'a> From<(pdb::PublicSymbol<'a>, usize, &pdb::AddressMap<'_>)> for PublicSy
             .map(|rva| u32::from(rva) as usize + base_address);
 
         PublicSymbol {
-            name: name.to_string(),
+            name: name.to_string().to_string(),
             is_code: code,
             is_function: function,
             is_managed: managed,
@@ -134,29 +132,26 @@ impl<'a> From<(pdb::PublicSymbol<'a>, usize, &pdb::AddressMap<'_>)> for PublicSy
 }
 
 #[derive(Debug, Serialize)]
-pub struct Data<'a> {
-    #[serde(borrow)]
-    name: Cow<'a, str>,
+pub struct Data {
+    name: String,
 
-    #[serde(borrow)]
-    typ: Rc<Type<'a>>,
+    typ: Rc<Type>,
 
     offset: usize,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Type<'a> {
-    name: Cow<'a, str>,
-    fields: Vec<(Cow<'a, str>, Type<'a>)>,
+pub struct Type {
+    name: String,
+    fields: Vec<(String, Type)>,
 
     /// length of this field in BITS
     len: usize,
 }
 
 #[derive(Debug, Serialize)]
-pub struct Procedure<'a> {
-    #[serde(borrow)]
-    name: Cow<'a, str>,
+pub struct Procedure {
+    name: String,
 
     signature: Option<String>,
 
@@ -170,17 +165,17 @@ pub struct Procedure<'a> {
     epilogue_start: usize,
 }
 
-impl<'a>
+impl
     From<(
-        pdb::ProcedureSymbol<'a>,
+        pdb::ProcedureSymbol<'_>,
         usize,
         &pdb::AddressMap<'_>,
         &pdb::ItemFinder<'_, pdb::TypeIndex>,
-    )> for Procedure<'a>
+    )> for Procedure
 {
     fn from(
         data: (
-            pdb::ProcedureSymbol<'a>,
+            pdb::ProcedureSymbol<'_>,
             usize,
             &pdb::AddressMap<'_>,
             &pdb::ItemFinder<'_, pdb::TypeIndex>,
@@ -219,7 +214,7 @@ impl<'a>
             .map(|type_info| format!("{}", type_info.index()));
 
         Procedure {
-            name: name.to_string(),
+            name: name.to_string().to_string(),
             signature,
             offset,
             len: len as usize,

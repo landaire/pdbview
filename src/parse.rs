@@ -6,11 +6,10 @@ use pdb::*;
 use std::fs::File;
 use std::path::Path;
 
-pub(crate) fn parse_pdb<'a, P: AsRef<Path>, F: FnOnce(ParsedPdb<'_>) -> std::io::Result<()>>(
+pub(crate) fn parse_pdb<P: AsRef<Path>>(
     path: P,
     base_address: Option<usize>,
-    after: F,
-) -> Result<()> {
+) -> Result<ParsedPdb>{
     let file = File::open(path.as_ref())?;
     let mut pdb = Box::new(PDB::open(file)?);
 
@@ -43,21 +42,35 @@ pub(crate) fn parse_pdb<'a, P: AsRef<Path>, F: FnOnce(ParsedPdb<'_>) -> std::io:
     let debug_info = pdb.debug_information()?;
     let mut modules = debug_info.modules()?;
     while let Some(module) = modules.next()? {
+        output_pdb.debug_modules.push((&module).into());
+
         let module_info = pdb.module_info(&module)?;
         if module_info.is_none() {
             warn!("Could not get module info for debug module: {:?}", module);
             continue;
         }
+
+        let module_info = module_info.unwrap();
+        let mut symbol_iter = module_info.symbols()?;
+        while let Some(symbol) = symbol_iter.next()? {
+            handle_symbol(
+                symbol.parse()?,
+                &mut output_pdb,
+                &address_map,
+                &type_finder,
+                base_address,
+            )?;
+        }
     }
 
-    Ok((after)(output_pdb)?)
+    Ok(output_pdb)
 }
 
 /// Converts a [pdb::SymbolData] object to a parsed symbol representation that
 /// we can serialize and adds it to the appropriate fields on the output [ParsedPdb]
-fn handle_symbol<'a>(
-    sym: SymbolData<'a>,
-    output_pdb: &mut ParsedPdb<'a>,
+fn handle_symbol(
+    sym: SymbolData<'_>,
+    output_pdb: &mut ParsedPdb,
     address_map: &AddressMap,
     type_finder: &ItemFinder<'_, TypeIndex>,
     base_address: Option<usize>,
@@ -68,7 +81,7 @@ fn handle_symbol<'a>(
         SymbolData::Public(data) => {
             debug!("public symbol: {:?}", data);
 
-            let converted_symbol: crate::typeinfo::PublicSymbol<'a> =
+            let converted_symbol: crate::typeinfo::PublicSymbol =
                 (data, base_address, address_map).into();
             output_pdb.public_symbols.push(converted_symbol);
         }
