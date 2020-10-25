@@ -104,24 +104,43 @@ pub struct FileInfo {
     checksum: Checksum,
 }
 
-impl From<(&pdb::Module<'_>, Option<&pdb::ModuleInfo<'_>>, &pdb::StringTable<'_>)> for DebugModule {
-    fn from(data: (&pdb::Module<'_>, Option<&pdb::ModuleInfo<'_>>, &pdb::StringTable<'_>)) -> Self {
+impl
+    From<(
+        &pdb::Module<'_>,
+        Option<&pdb::ModuleInfo<'_>>,
+        &pdb::StringTable<'_>,
+    )> for DebugModule
+{
+    fn from(
+        data: (
+            &pdb::Module<'_>,
+            Option<&pdb::ModuleInfo<'_>>,
+            &pdb::StringTable<'_>,
+        ),
+    ) -> Self {
         let (module, info, string_table) = data;
 
-        let source_files: Option<Vec<FileInfo>> = info.map(|info| {
-            info.line_program()
-                .ok()
-                .and_then(|prog| {
-                    prog.files().map(|f| {
-                        let file_name = f.name.to_string_lossy(string_table).expect("failed to convert string").to_string();
+        let source_files: Option<Vec<FileInfo>> = info
+            .map(|info| {
+                info.line_program().ok().and_then(|prog| {
+                    prog.files()
+                        .map(|f| {
+                            let file_name = f
+                                .name
+                                .to_string_lossy(string_table)
+                                .expect("failed to convert string")
+                                .to_string();
 
-                        Ok(FileInfo {
-                        name: file_name,
-                        checksum: f.checksum.into(),
-                    })
-                }).collect().ok()
+                            Ok(FileInfo {
+                                name: file_name,
+                                checksum: f.checksum.into(),
+                            })
+                        })
+                        .collect()
+                        .ok()
                 })
-        }).flatten();
+            })
+            .flatten();
 
         DebugModule {
             name: module.module_name().to_string(),

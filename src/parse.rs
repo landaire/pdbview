@@ -6,10 +6,7 @@ use pdb::*;
 use std::fs::File;
 use std::path::Path;
 
-pub(crate) fn parse_pdb<P: AsRef<Path>>(
-    path: P,
-    base_address: Option<usize>,
-) -> Result<ParsedPdb>{
+pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
     let file = File::open(path.as_ref())?;
     let mut pdb = Box::new(PDB::open(file)?);
 
@@ -45,9 +42,10 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(
     let debug_info = pdb.debug_information()?;
     let mut modules = debug_info.modules()?;
     while let Some(module) = modules.next()? {
-
         let module_info = pdb.module_info(&module)?;
-        output_pdb.debug_modules.push((&module, module_info.as_ref(), &string_table).into());
+        output_pdb
+            .debug_modules
+            .push((&module, module_info.as_ref(), &string_table).into());
         if module_info.is_none() {
             warn!("Could not get module info for debug module: {:?}", module);
             continue;

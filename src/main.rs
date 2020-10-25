@@ -69,6 +69,5 @@ fn main() -> anyhow::Result<()> {
         OutputFormatType::Json => output::print_json(&mut stdout_lock, &parsed_pdb)?,
     }
 
-
     Ok(())
 }
