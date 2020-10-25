@@ -15,6 +15,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(
 
     let mut output_pdb = ParsedPdb::new(path.as_ref().to_owned());
     let address_map = pdb.address_map()?;
+    let string_table = pdb.string_table()?;
 
     // Parse type information first. Some symbol info (such as function signatures) depends
     // upon type information, but not vice versa
@@ -29,22 +30,24 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(
     let symbol_table = pdb.global_symbols()?;
     let mut symbols = symbol_table.iter();
     while let Some(symbol) = symbols.next()? {
-        handle_symbol(
-            symbol.parse()?,
+        if let Err(e) = handle_symbol(
+            symbol,
             &mut output_pdb,
             &address_map,
             &type_finder,
             base_address,
-        )?;
+        ) {
+            warn!("Error handling symbol {:?}: {}", symbol, e);
+        }
     }
 
     // Parse private symbols
     let debug_info = pdb.debug_information()?;
     let mut modules = debug_info.modules()?;
     while let Some(module) = modules.next()? {
-        output_pdb.debug_modules.push((&module).into());
 
         let module_info = pdb.module_info(&module)?;
+        output_pdb.debug_modules.push((&module, module_info.as_ref(), &string_table).into());
         if module_info.is_none() {
             warn!("Could not get module info for debug module: {:?}", module);
             continue;
@@ -53,13 +56,15 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(
         let module_info = module_info.unwrap();
         let mut symbol_iter = module_info.symbols()?;
         while let Some(symbol) = symbol_iter.next()? {
-            handle_symbol(
-                symbol.parse()?,
+            if let Err(e) = handle_symbol(
+                symbol,
                 &mut output_pdb,
                 &address_map,
                 &type_finder,
                 base_address,
-            )?;
+            ) {
+                warn!("Error handling symbol {:?}: {}", symbol, e);
+            }
         }
     }
 
@@ -67,15 +72,17 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(
 }
 
 /// Converts a [pdb::SymbolData] object to a parsed symbol representation that
-/// we can serialize and adds it to the appropriate fields on the output [ParsedPdb]
+/// we can serialize and adds it to the appropriate fields on the output [ParsedPdb].
+/// Errors returned from this function should not be considered fatal.
 fn handle_symbol(
-    sym: SymbolData<'_>,
+    sym: Symbol,
     output_pdb: &mut ParsedPdb,
     address_map: &AddressMap,
     type_finder: &ItemFinder<'_, TypeIndex>,
     base_address: Option<usize>,
 ) -> Result<(), ParsingError> {
     let base_address = base_address.unwrap_or(0);
+    let sym = sym.parse()?;
 
     match sym {
         SymbolData::Public(data) => {

@@ -1,4 +1,5 @@
 use log::warn;
+use pdb::FallibleIterator;
 use serde::Serialize;
 use std::borrow::Cow;
 use std::convert::From;
@@ -75,13 +76,57 @@ impl From<&pdb::CompilerVersion> for CompilerVersion {
 pub struct DebugModule {
     name: String,
     object_file_name: String,
+    source_files: Option<Vec<FileInfo>>,
 }
 
-impl From<&pdb::Module<'_>> for DebugModule {
-    fn from(module: &pdb::Module<'_>) -> Self {
+#[derive(Debug, Serialize)]
+enum Checksum {
+    None,
+    Md5(Vec<u8>),
+    Sha1(Vec<u8>),
+    Sha256(Vec<u8>),
+}
+
+impl From<pdb::FileChecksum<'_>> for Checksum {
+    fn from(checksum: pdb::FileChecksum<'_>) -> Self {
+        match checksum {
+            pdb::FileChecksum::None => Checksum::None,
+            pdb::FileChecksum::Md5(data) => Checksum::Md5(data.to_vec()),
+            pdb::FileChecksum::Sha1(data) => Checksum::Sha1(data.to_vec()),
+            pdb::FileChecksum::Sha256(data) => Checksum::Sha256(data.to_vec()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct FileInfo {
+    name: String,
+    checksum: Checksum,
+}
+
+impl From<(&pdb::Module<'_>, Option<&pdb::ModuleInfo<'_>>, &pdb::StringTable<'_>)> for DebugModule {
+    fn from(data: (&pdb::Module<'_>, Option<&pdb::ModuleInfo<'_>>, &pdb::StringTable<'_>)) -> Self {
+        let (module, info, string_table) = data;
+
+        let source_files: Option<Vec<FileInfo>> = info.map(|info| {
+            info.line_program()
+                .ok()
+                .and_then(|prog| {
+                    prog.files().map(|f| {
+                        let file_name = f.name.to_string_lossy(string_table).expect("failed to convert string").to_string();
+
+                        Ok(FileInfo {
+                        name: file_name,
+                        checksum: f.checksum.into(),
+                    })
+                }).collect().ok()
+                })
+        }).flatten();
+
         DebugModule {
             name: module.module_name().to_string(),
             object_file_name: module.object_file_name().to_string(),
+            source_files,
         }
     }
 }
