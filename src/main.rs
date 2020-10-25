@@ -1,11 +1,11 @@
-use structopt::StructOpt;
 use std::path::PathBuf;
 use std::str::FromStr;
+use structopt::StructOpt;
 
-mod typeinfo;
-mod parse;
 mod error;
 mod output;
+mod parse;
+mod typeinfo;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pdbview")]
@@ -41,7 +41,12 @@ impl FromStr for OutputFormatType {
         let result = match s.to_ascii_lowercase().as_ref() {
             "plain" => OutputFormatType::Plain,
             "json" => OutputFormatType::Json,
-            _ => return Err(error::CliArgumentError::InvalidValue("format", s.to_string()))
+            _ => {
+                return Err(error::CliArgumentError::InvalidValue(
+                    "format",
+                    s.to_string(),
+                ))
+            }
         };
 
         Ok(result)
@@ -61,7 +66,7 @@ fn main() -> anyhow::Result<()> {
 
         match opt.format {
             OutputFormatType::Plain => output::print_plain(&mut stdout_lock, &parsed_pdb),
-        OutputFormatType::Json => output::print_json(&mut stdout_lock, &parsed_pdb),
+            OutputFormatType::Json => output::print_json(&mut stdout_lock, &parsed_pdb),
         }
     })?;
 

@@ -9,5 +9,5 @@ pub enum CliArgumentError {
 #[derive(Error, Debug)]
 pub enum ParsingError {
     #[error("the PDB parsing library encountered an error: {0}")]
-    PdbCrateError(#[from] pdb::Error)
+    PdbCrateError(#[from] pdb::Error),
 }

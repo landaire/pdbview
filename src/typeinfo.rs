@@ -1,9 +1,9 @@
-use std::convert::From;
-use std::rc::Rc;
-use std::path::PathBuf;
 use log::warn;
-use std::borrow::Cow;
 use serde::Serialize;
+use std::borrow::Cow;
+use std::convert::From;
+use std::path::PathBuf;
+use std::rc::Rc;
 
 /// Represents a PDB that has been fully parsed
 #[derive(Debug, Serialize)]
@@ -112,10 +112,15 @@ impl<'a> From<(pdb::PublicSymbol<'a>, usize, &pdb::AddressMap<'_>)> for PublicSy
         } = sym;
 
         if offset.section == 0 {
-            warn!("symbol type has an invalid section index and RVA will be invalid: {:?}", sym)
+            warn!(
+                "symbol type has an invalid section index and RVA will be invalid: {:?}",
+                sym
+            )
         }
 
-        let offset = offset.to_rva(address_map).map(|rva| u32::from(rva) as usize + base_address);
+        let offset = offset
+            .to_rva(address_map)
+            .map(|rva| u32::from(rva) as usize + base_address);
 
         PublicSymbol {
             name: name.to_string(),
@@ -163,14 +168,27 @@ pub struct Procedure<'a> {
     /// length of this procedure in BYTES
     prologue_end: usize,
     epilogue_start: usize,
-
 }
 
-impl<'a> From<(pdb::ProcedureSymbol<'a>, usize, &pdb::AddressMap<'_>, &pdb::ItemFinder<'_, pdb::TypeIndex>)> for Procedure<'a>{
-    fn from(data: (pdb::ProcedureSymbol<'a>, usize, &pdb::AddressMap<'_>, &pdb::ItemFinder<'_, pdb::TypeIndex>)) -> Self {
+impl<'a>
+    From<(
+        pdb::ProcedureSymbol<'a>,
+        usize,
+        &pdb::AddressMap<'_>,
+        &pdb::ItemFinder<'_, pdb::TypeIndex>,
+    )> for Procedure<'a>
+{
+    fn from(
+        data: (
+            pdb::ProcedureSymbol<'a>,
+            usize,
+            &pdb::AddressMap<'_>,
+            &pdb::ItemFinder<'_, pdb::TypeIndex>,
+        ),
+    ) -> Self {
         let (sym, base_address, address_map, type_finder) = data;
 
-        let pdb::ProcedureSymbol{
+        let pdb::ProcedureSymbol {
             global,
             dpc,
             parent,
@@ -182,15 +200,23 @@ impl<'a> From<(pdb::ProcedureSymbol<'a>, usize, &pdb::AddressMap<'_>, &pdb::Item
             type_index,
             offset,
             flags,
-            name
+            name,
         } = sym;
 
         if offset.section == 0 {
-            warn!("symbol type has an invalid section index and RVA will be invalid: {:?}", sym)
+            warn!(
+                "symbol type has an invalid section index and RVA will be invalid: {:?}",
+                sym
+            )
         }
 
-        let offset = offset.to_rva(address_map).map(|rva| u32::from(rva) as usize + base_address);
-        let signature =type_finder.find(type_index).ok().map(|type_info| format!("{}", type_info.index()));
+        let offset = offset
+            .to_rva(address_map)
+            .map(|rva| u32::from(rva) as usize + base_address);
+        let signature = type_finder
+            .find(type_index)
+            .ok()
+            .map(|type_info| format!("{}", type_info.index()));
 
         Procedure {
             name: name.to_string(),

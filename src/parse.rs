@@ -6,7 +6,11 @@ use pdb::*;
 use std::fs::File;
 use std::path::Path;
 
-pub(crate) fn parse_pdb<'a, P: AsRef<Path>, F: FnOnce(ParsedPdb<'_>) -> std::io::Result<()>>(path: P, base_address: Option<usize>, after: F) -> Result<()> {
+pub(crate) fn parse_pdb<'a, P: AsRef<Path>, F: FnOnce(ParsedPdb<'_>) -> std::io::Result<()>>(
+    path: P,
+    base_address: Option<usize>,
+    after: F,
+) -> Result<()> {
     let file = File::open(path.as_ref())?;
     let mut pdb = Box::new(PDB::open(file)?);
 
@@ -51,7 +55,7 @@ pub(crate) fn parse_pdb<'a, P: AsRef<Path>, F: FnOnce(ParsedPdb<'_>) -> std::io:
 
 /// Converts a [pdb::SymbolData] object to a parsed symbol representation that
 /// we can serialize and adds it to the appropriate fields on the output [ParsedPdb]
-fn handle_symbol<'a> (
+fn handle_symbol<'a>(
     sym: SymbolData<'a>,
     output_pdb: &mut ParsedPdb<'a>,
     address_map: &AddressMap,
