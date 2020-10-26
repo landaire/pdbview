@@ -6,5 +6,5 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
 }
 
 pub fn print_json(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<()> {
-    Ok(())
+    write!(output, "{}", serde_json::to_string(pdb_info)?)
 }
