@@ -14,7 +14,7 @@ struct Opt {
     #[structopt(short, long)]
     debug: bool,
 
-    /// Output format type
+    /// Output format type. Options include: plain, json
     #[structopt(short, long, default_value = "plain")]
     format: OutputFormatType,
 

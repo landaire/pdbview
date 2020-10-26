@@ -81,12 +81,12 @@ impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo 
 #[derive(Debug, Serialize)]
 pub struct CompilerInfo {
     // TODO: cpu_type, flags, language
-    language: String,
-    flags: CompileFlags,
-    cpu_type: String,
-    frontend_version: CompilerVersion,
-    backend_version: CompilerVersion,
-    version_string: String,
+    pub language: String,
+    pub flags: CompileFlags,
+    pub cpu_type: String,
+    pub frontend_version: CompilerVersion,
+    pub backend_version: CompilerVersion,
+    pub version_string: String,
 }
 
 impl From<pdb::CompileFlagsSymbol<'_>> for CompilerInfo {
@@ -114,29 +114,29 @@ impl From<pdb::CompileFlagsSymbol<'_>> for CompilerInfo {
 #[derive(Debug, Serialize)]
 pub struct CompileFlags {
     /// Compiled for edit and continue.
-    edit_and_continue: bool,
+    pub edit_and_continue: bool,
     /// Compiled without debugging info.
-    no_debug_info: bool,
+    pub no_debug_info: bool,
     /// Compiled with `LTCG`.
-    link_time_codegen: bool,
+    pub link_time_codegen: bool,
     /// Compiled with `/bzalign`.
-    no_data_align: bool,
+    pub no_data_align: bool,
     /// Managed code or data is present.
-    managed: bool,
+    pub managed: bool,
     /// Compiled with `/GS`.
-    security_checks: bool,
+    pub security_checks: bool,
     /// Compiled with `/hotpatch`.
-    hot_patch: bool,
+    pub hot_patch: bool,
     /// Compiled with `CvtCIL`.
-    cvtcil: bool,
+    pub cvtcil: bool,
     /// This is a MSIL .NET Module.
-    msil_module: bool,
+    pub msil_module: bool,
     /// Compiled with `/sdl`.
-    sdl: bool,
+    pub sdl: bool,
     /// Compiled with `/ltcg:pgo` or `pgo:`.
-    pgo: bool,
+    pub pgo: bool,
     /// This is a .exp module.
-    exp_module: bool,
+    pub exp_module: bool,
 }
 
 impl From<pdb::CompileFlags> for CompileFlags {
@@ -175,10 +175,10 @@ impl From<pdb::CompileFlags> for CompileFlags {
 
 #[derive(Debug, Serialize)]
 pub struct CompilerVersion {
-    major: u16,
-    minor: u16,
-    build: u16,
-    qfe: Option<u16>,
+    pub major: u16,
+    pub minor: u16,
+    pub build: u16,
+    pub qfe: Option<u16>,
 }
 
 impl From<pdb::CompilerVersion> for CompilerVersion {
@@ -281,12 +281,12 @@ impl
 
 #[derive(Debug, Serialize)]
 pub struct PublicSymbol {
-    name: String,
-    is_code: bool,
-    is_function: bool,
-    is_managed: bool,
-    is_msil: bool,
-    offset: Option<usize>,
+    pub name: String,
+    pub is_code: bool,
+    pub is_function: bool,
+    pub is_managed: bool,
+    pub is_msil: bool,
+    pub offset: Option<usize>,
 }
 
 impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for PublicSymbol {
@@ -350,18 +350,18 @@ pub struct Type {
 
 #[derive(Debug, Serialize)]
 pub struct Procedure {
-    name: String,
+    pub name: String,
 
-    signature: Option<String>,
+    pub signature: Option<String>,
 
-    offset: Option<usize>,
-    len: usize,
+    pub offset: Option<usize>,
+    pub len: usize,
 
-    is_global: bool,
-    is_dpc: bool,
+    pub is_global: bool,
+    pub is_dpc: bool,
     /// length of this procedure in BYTES
-    prologue_end: usize,
-    epilogue_start: usize,
+    pub prologue_end: usize,
+    pub epilogue_start: usize,
 }
 
 impl
