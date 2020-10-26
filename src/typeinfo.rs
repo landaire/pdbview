@@ -2,7 +2,7 @@ use log::warn;
 use pdb::FallibleIterator;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::convert::{TryFrom, From};
+use std::convert::{From, TryFrom};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -47,7 +47,9 @@ pub struct BuildInfo {
 impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo {
     type Error = crate::error::ParsingError;
 
-    fn try_from(info: (&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)) -> Result<Self, Self::Error> {
+    fn try_from(
+        info: (&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>),
+    ) -> Result<Self, Self::Error> {
         let (symbol, finder) = info;
         if finder.is_none() {
             return Err(crate::error::ParsingError::MissingDependency("IdFinder"));
@@ -55,14 +57,21 @@ impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo 
 
         let finder = finder.unwrap();
 
-        let build_info = finder.find(symbol.id)?.parse().expect("failed to parse build info");
+        let build_info = finder
+            .find(symbol.id)?
+            .parse()
+            .expect("failed to parse build info");
         match build_info {
             pdb::IdData::BuildInfo(build_info_id) => {
-                let argument_ids: Vec<_> = build_info_id.arguments.iter().map(|id| finder.find(*id).expect("failed to parse ID")).collect();
+                let argument_ids: Vec<_> = build_info_id
+                    .arguments
+                    .iter()
+                    .map(|id| finder.find(*id).expect("failed to parse ID"))
+                    .collect();
 
                 panic!("{:?}", argument_ids);
             }
-            _ => unreachable!()
+            _ => unreachable!(),
         };
 
         Err(crate::error::ParsingError::Unsupported("BuildInfo"))
@@ -88,7 +97,7 @@ impl From<pdb::CompileFlagsSymbol<'_>> for CompilerInfo {
             cpu_type,
             frontend_version,
             backend_version,
-            version_string
+            version_string,
         } = flags;
 
         CompilerInfo {
@@ -226,36 +235,38 @@ impl
     From<(
         &pdb::Module<'_>,
         Option<&pdb::ModuleInfo<'_>>,
-        &pdb::StringTable<'_>,
+        Option<&pdb::StringTable<'_>>,
     )> for DebugModule
 {
     fn from(
         data: (
             &pdb::Module<'_>,
             Option<&pdb::ModuleInfo<'_>>,
-            &pdb::StringTable<'_>,
+            Option<&pdb::StringTable<'_>>,
         ),
     ) -> Self {
         let (module, info, string_table) = data;
 
-        let source_files: Option<Vec<FileInfo>> = info
-            .map(|info| {
-                info.line_program().ok().and_then(|prog| {
-                    prog.files()
-                        .map(|f| {
-                            let file_name = f
-                                .name
-                                .to_string_lossy(string_table)
-                                .expect("failed to convert string")
-                                .to_string();
+        let source_files: Option<Vec<FileInfo>> = string_table
+            .and_then(|string_table| {
+                info.and_then(|info| {
+                    info.line_program().ok().map(|prog| {
+                        prog.files()
+                            .map(|f| {
+                                let file_name = f
+                                    .name
+                                    .to_string_lossy(string_table)
+                                    .expect("failed to convert string")
+                                    .to_string();
 
-                            Ok(FileInfo {
-                                name: file_name,
-                                checksum: f.checksum.into(),
+                                Ok(FileInfo {
+                                    name: file_name,
+                                    checksum: f.checksum.into(),
+                                })
                             })
-                        })
-                        .collect()
-                        .ok()
+                            .collect()
+                            .ok()
+                    })
                 })
             })
             .flatten();
@@ -278,8 +289,8 @@ pub struct PublicSymbol {
     offset: Option<usize>,
 }
 
-impl From<(pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)> for PublicSymbol {
-    fn from(data: (pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)) -> Self {
+impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for PublicSymbol {
+    fn from(data: (pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)) -> Self {
         let (sym, base_address, address_map) = data;
 
         let pdb::PublicSymbol {
@@ -298,9 +309,11 @@ impl From<(pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)> for PublicSymbol
             )
         }
 
-        let offset = offset
-            .to_rva(address_map)
-            .map(|rva| u32::from(rva) as usize + base_address);
+        let offset = address_map.and_then(|address_map| {
+            offset
+                .to_rva(address_map)
+                .map(|rva| u32::from(rva) as usize + base_address)
+        });
 
         PublicSymbol {
             name: name.to_string().to_string(),
@@ -308,7 +321,7 @@ impl From<(pdb::PublicSymbol<'_>, usize, &pdb::AddressMap<'_>)> for PublicSymbol
             is_function: function,
             is_managed: managed,
             is_msil: msil,
-            offset: offset,
+            offset,
         }
     }
 }
@@ -321,6 +334,10 @@ pub struct Data {
 
     offset: usize,
 }
+
+// pub enum Type {
+//     Class(),
+// }
 
 #[derive(Debug, Serialize)]
 pub struct Type {
@@ -351,7 +368,7 @@ impl
     From<(
         pdb::ProcedureSymbol<'_>,
         usize,
-        &pdb::AddressMap<'_>,
+        Option<&pdb::AddressMap<'_>>,
         &pdb::ItemFinder<'_, pdb::TypeIndex>,
     )> for Procedure
 {
@@ -359,7 +376,7 @@ impl
         data: (
             pdb::ProcedureSymbol<'_>,
             usize,
-            &pdb::AddressMap<'_>,
+            Option<&pdb::AddressMap<'_>>,
             &pdb::ItemFinder<'_, pdb::TypeIndex>,
         ),
     ) -> Self {
@@ -387,13 +404,18 @@ impl
             )
         }
 
-        let offset = offset
-            .to_rva(address_map)
-            .map(|rva| u32::from(rva) as usize + base_address);
-        let signature = type_finder
-            .find(type_index)
-            .ok()
-            .map(|type_info| format!("{:?}", type_info.parse().expect("failed to parse type info")));
+        let offset = address_map.and_then(|address_map| {
+            offset
+                .to_rva(address_map)
+                .map(|rva| u32::from(rva) as usize + base_address)
+        });
+
+        let signature = type_finder.find(type_index).ok().map(|type_info| {
+            format!(
+                "{:?}",
+                type_info.parse().expect("failed to parse type info")
+            )
+        });
 
         Procedure {
             name: name.to_string().to_string(),

@@ -3,23 +3,28 @@ use crate::typeinfo::*;
 use anyhow::Result;
 use log::{debug, warn};
 use pdb::*;
+use std::convert::TryInto;
 use std::fs::File;
 use std::path::Path;
-use std::convert::TryInto;
 
 pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
     let file = File::open(path.as_ref())?;
+    debug!("opening PDB");
     let mut pdb = Box::new(PDB::open(file)?);
 
     let mut output_pdb = ParsedPdb::new(path.as_ref().to_owned());
-    let address_map = pdb.address_map()?;
-    let string_table = pdb.string_table()?;
+    debug!("getting address map");
+    let address_map = pdb.address_map().ok();
+    debug!("grabbing string table");
+    let string_table = pdb.string_table().ok();
 
+    debug!("fetching ID information");
     // Some symbols such as build information rely on IDs being known. Iterate these to
     // build the database
     let id_information = pdb.id_information();
     let id_finder = match &id_information {
         Ok(id_information) => {
+            debug!("ID information header was valid");
             let mut id_finder = id_information.finder();
             let mut iter = id_information.iter();
             while let Some(id) = iter.next()? {
@@ -34,6 +39,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
         }
     };
 
+    debug!("grabbing type information");
     // Parse type information first. Some symbol info (such as function signatures) depends
     // upon type information, but not vice versa
     let type_information = pdb.type_information()?;
@@ -43,6 +49,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
         type_finder.update(&iter);
     }
 
+    debug!("grabbing public symbols");
     // Parse public symbols
     let symbol_table = pdb.global_symbols()?;
     let mut symbols = symbol_table.iter();
@@ -50,7 +57,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
         if let Err(e) = handle_symbol(
             symbol,
             &mut output_pdb,
-            &address_map,
+            address_map.as_ref(),
             &type_finder,
             id_finder.as_ref(),
             base_address,
@@ -59,6 +66,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
         }
     }
 
+    debug!("grabbing debug modules");
     // Parse private symbols
     let debug_info = pdb.debug_information()?;
     let mut modules = debug_info.modules()?;
@@ -66,19 +74,20 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
         let module_info = pdb.module_info(&module)?;
         output_pdb
             .debug_modules
-            .push((&module, module_info.as_ref(), &string_table).into());
+            .push((&module, module_info.as_ref(), string_table.as_ref()).into());
         if module_info.is_none() {
             warn!("Could not get module info for debug module: {:?}", module);
             continue;
         }
 
+        debug!("grabbing symbols for module: {}", module.module_name());
         let module_info = module_info.unwrap();
         let mut symbol_iter = module_info.symbols()?;
         while let Some(symbol) = symbol_iter.next()? {
             if let Err(e) = handle_symbol(
                 symbol,
                 &mut output_pdb,
-                &address_map,
+                address_map.as_ref(),
                 &type_finder,
                 id_finder.as_ref(),
                 base_address,
@@ -97,7 +106,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
 fn handle_symbol(
     sym: Symbol,
     output_pdb: &mut ParsedPdb,
-    address_map: &AddressMap,
+    address_map: Option<&AddressMap>,
     type_finder: &ItemFinder<'_, TypeIndex>,
     id_finder: Option<&ItemFinder<'_, IdIndex>>,
     base_address: Option<usize>,
@@ -122,8 +131,7 @@ fn handle_symbol(
         }
         SymbolData::BuildInfo(data) => {
             debug!("build info: {:?}", data);
-            let converted_symbol: crate::typeinfo::BuildInfo =
-                (&data, id_finder).try_into()?;
+            let converted_symbol: crate::typeinfo::BuildInfo = (&data, id_finder).try_into()?;
             output_pdb.assembly_info.build_info = Some(converted_symbol);
         }
         SymbolData::CompileFlags(data) => {
