@@ -10,4 +10,8 @@ pub enum CliArgumentError {
 pub enum ParsingError {
     #[error("the PDB parsing library encountered an error: {0}")]
     PdbCrateError(#[from] pdb::Error),
+    #[error("dependency `{0}` required for parsing is unavailable")]
+    MissingDependency(&'static str),
+    #[error("functionality `{0}` is currently unsupported")]
+    Unsupported(&'static str),
 }

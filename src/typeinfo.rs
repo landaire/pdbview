@@ -2,7 +2,7 @@ use log::warn;
 use pdb::FallibleIterator;
 use serde::Serialize;
 use std::borrow::Cow;
-use std::convert::From;
+use std::convert::{TryFrom, From};
 use std::path::PathBuf;
 use std::rc::Rc;
 
@@ -10,7 +10,7 @@ use std::rc::Rc;
 #[derive(Debug, Serialize)]
 pub struct ParsedPdb {
     pub path: PathBuf,
-    pub assembly_info: Option<AssemblyInfo>,
+    pub assembly_info: AssemblyInfo,
     pub public_symbols: Vec<PublicSymbol>,
     pub types: Vec<Rc<Type>>,
     pub procedures: Vec<Procedure>,
@@ -23,7 +23,7 @@ impl ParsedPdb {
     pub fn new(path: PathBuf) -> Self {
         ParsedPdb {
             path,
-            assembly_info: None,
+            assembly_info: AssemblyInfo::default(),
             public_symbols: vec![],
             types: vec![],
             procedures: vec![],
@@ -33,17 +33,135 @@ impl ParsedPdb {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct AssemblyInfo {
-    compiler_info: CompilerInfo,
+    pub build_info: Option<BuildInfo>,
+    pub compiler_info: Option<CompilerInfo>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BuildInfo {
+    arguments: Vec<String>,
+}
+
+impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo {
+    type Error = crate::error::ParsingError;
+
+    fn try_from(info: (&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)) -> Result<Self, Self::Error> {
+        let (symbol, finder) = info;
+        if finder.is_none() {
+            return Err(crate::error::ParsingError::MissingDependency("IdFinder"));
+        }
+
+        let finder = finder.unwrap();
+
+        let build_info = finder.find(symbol.id)?.parse().expect("failed to parse build info");
+        match build_info {
+            pdb::IdData::BuildInfo(build_info_id) => {
+                let argument_ids: Vec<_> = build_info_id.arguments.iter().map(|id| finder.find(*id).expect("failed to parse ID")).collect();
+
+                panic!("{:?}", argument_ids);
+            }
+            _ => unreachable!()
+        };
+
+        Err(crate::error::ParsingError::Unsupported("BuildInfo"))
+    }
 }
 
 #[derive(Debug, Serialize)]
 pub struct CompilerInfo {
     // TODO: cpu_type, flags, language
+    language: String,
+    flags: CompileFlags,
+    cpu_type: String,
     frontend_version: CompilerVersion,
     backend_version: CompilerVersion,
     version_string: String,
+}
+
+impl From<pdb::CompileFlagsSymbol<'_>> for CompilerInfo {
+    fn from(flags: pdb::CompileFlagsSymbol<'_>) -> Self {
+        let pdb::CompileFlagsSymbol {
+            language,
+            flags,
+            cpu_type,
+            frontend_version,
+            backend_version,
+            version_string
+        } = flags;
+
+        CompilerInfo {
+            language: language.to_string(),
+            flags: flags.into(),
+            cpu_type: cpu_type.to_string(),
+            frontend_version: frontend_version.into(),
+            backend_version: backend_version.into(),
+            version_string: version_string.to_string().into_owned(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct CompileFlags {
+    /// Compiled for edit and continue.
+    edit_and_continue: bool,
+    /// Compiled without debugging info.
+    no_debug_info: bool,
+    /// Compiled with `LTCG`.
+    link_time_codegen: bool,
+    /// Compiled with `/bzalign`.
+    no_data_align: bool,
+    /// Managed code or data is present.
+    managed: bool,
+    /// Compiled with `/GS`.
+    security_checks: bool,
+    /// Compiled with `/hotpatch`.
+    hot_patch: bool,
+    /// Compiled with `CvtCIL`.
+    cvtcil: bool,
+    /// This is a MSIL .NET Module.
+    msil_module: bool,
+    /// Compiled with `/sdl`.
+    sdl: bool,
+    /// Compiled with `/ltcg:pgo` or `pgo:`.
+    pgo: bool,
+    /// This is a .exp module.
+    exp_module: bool,
+}
+
+impl From<pdb::CompileFlags> for CompileFlags {
+    fn from(flags: pdb::CompileFlags) -> Self {
+        let pdb::CompileFlags {
+            edit_and_continue,
+            no_debug_info,
+            link_time_codegen,
+            no_data_align,
+            managed,
+            security_checks,
+            hot_patch,
+            cvtcil,
+            msil_module,
+            sdl,
+            pgo,
+            exp_module,
+        } = flags;
+
+        CompileFlags {
+            edit_and_continue,
+            no_debug_info,
+            link_time_codegen,
+            no_data_align,
+            managed,
+            security_checks,
+            hot_patch,
+            cvtcil,
+            msil_module,
+            sdl,
+            pgo,
+            exp_module,
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -54,14 +172,14 @@ pub struct CompilerVersion {
     qfe: Option<u16>,
 }
 
-impl From<&pdb::CompilerVersion> for CompilerVersion {
-    fn from(version: &pdb::CompilerVersion) -> Self {
+impl From<pdb::CompilerVersion> for CompilerVersion {
+    fn from(version: pdb::CompilerVersion) -> Self {
         let pdb::CompilerVersion {
             major,
             minor,
             build,
             qfe,
-        } = *version;
+        } = version;
 
         CompilerVersion {
             major,
@@ -275,7 +393,7 @@ impl
         let signature = type_finder
             .find(type_index)
             .ok()
-            .map(|type_info| format!("{}", type_info.index()));
+            .map(|type_info| format!("{:?}", type_info.parse().expect("failed to parse type info")));
 
         Procedure {
             name: name.to_string().to_string(),

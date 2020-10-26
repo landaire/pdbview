@@ -161,8 +161,6 @@ dependencies = [
 [[package]]
 name = "pdb"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b66be5fcea88b52962d3d6fcc5194f1d77666f5aca256926688743a8de1152e4"
 dependencies = [
  "fallible-iterator",
  "scroll",
