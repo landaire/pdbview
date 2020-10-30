@@ -19,6 +19,8 @@ pub enum Type {
     Primitive(Primitive),
     Array(Array),
     FieldList(FieldList),
+    Modifier(Modifier),
+    Member(Member),
 }
 
 impl TypeSize for Type {
@@ -35,7 +37,9 @@ impl TypeSize for Type {
                 .0
                 .iter()
                 .fold(0, |acc, field| acc + field.type_size()),
-            Type::EnumVariant(variant) => panic!("type_size() invoked for EnumVariant"),
+            Type::EnumVariant(_) => panic!("type_size() invoked for EnumVariant"),
+            Type::Modifier(_) => panic!("type_size() invoked for Modifier"),
+            Type::Member(_) => panic!("type_size() invoked for Modifier"),
         }
     }
 }
@@ -52,12 +56,12 @@ pub struct Class {
 type FromClass<'a, 'b> = (
     &'b pdb::ClassType<'a>,
     &'b pdb::TypeFinder<'a>,
-    &'b HashMap<u32, Rc<Type>>,
+    &'b mut crate::symbol_types::ParsedPdb,
 );
 
 impl From<FromClass<'_, '_>> for Class {
     fn from(info: FromClass<'_, '_>) -> Self {
-        let (class, type_finder, parsed_types) = info;
+        let (class, type_finder, output_pdb) = info;
 
         let pdb::ClassType {
             kind,
@@ -72,15 +76,19 @@ impl From<FromClass<'_, '_>> for Class {
         } = *class;
 
         let fields: Vec<Rc<Type>> = fields
-            .iter()
             .map(|type_index| {
-                if let Some(typ) = parsed_types.get(&type_index.0) {
-                    Rc::clone(typ)
+                // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
+                if let Type::FieldList(fields) =
+                    crate::parse::handle_type(type_index, output_pdb, type_finder)
+                        .expect("failed to resolve dependent type")
+                        .as_ref()
+                {
+                    fields.0.clone()
                 } else {
-                    panic!("dependent type has not yet been parsed");
+                    panic!("got an unexpected type when FieldList was expected")
                 }
             })
-            .collect();
+            .unwrap_or_default();
 
         Class {
             name: name.to_string().into_owned(),
@@ -112,7 +120,7 @@ impl From<pdb::ClassKind> for ClassKind {
 type FromUnion<'a, 'b> = (
     &'b pdb::UnionType<'a>,
     &'b pdb::TypeFinder<'a>,
-    &'b HashMap<u32, Rc<Type>>,
+    &'b mut crate::symbol_types::ParsedPdb,
 );
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Union {
@@ -124,7 +132,7 @@ pub struct Union {
 }
 impl From<FromUnion<'_, '_>> for Union {
     fn from(data: FromUnion<'_, '_>) -> Self {
-        let (union, type_finder, parsed_types) = data;
+        let (union, type_finder, parsed_pdb) = data;
         let pdb::UnionType {
             count,
             properties,
@@ -133,6 +141,17 @@ impl From<FromUnion<'_, '_>> for Union {
             name,
             unique_name,
         } = *union;
+
+        // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
+        let fields = if let Type::FieldList(fields) =
+            crate::parse::handle_type(fields, parsed_pdb, type_finder)
+                .expect("failed to resolve dependent type")
+                .as_ref()
+        {
+            fields.0.clone()
+        } else {
+            panic!("got an unexpected type when FieldList was expected")
+        };
 
         Union {
             name: name.to_string().into_owned(),
@@ -508,6 +527,7 @@ impl From<FromArray<'_, '_>> for Array {
         let size = *dimensions.last().unwrap() as usize;
         let mut last_element_size = element_type.type_size();
         let mut dimensions_elements = vec![];
+        println!("{:?}", dimensions);
         for bytes in dimensions {
             let elements = (*bytes as usize) / last_element_size;
             dimensions_elements.push(elements);
@@ -566,5 +586,77 @@ impl From<FromFieldList<'_, '_>> for FieldList {
         }
 
         FieldList(result_fields)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Modifier {
+    underlying_type: Rc<Type>,
+    constant: bool,
+    volatile: bool,
+    unaligned: bool,
+}
+
+type FromModifier<'a, 'b> = (
+    &'b pdb::ModifierType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromModifier<'_, '_>> for Modifier {
+    fn from(data: FromModifier<'_, '_>) -> Self {
+        let (modifier, type_finder, output_pdb) = data;
+
+        let pdb::ModifierType {
+            underlying_type,
+            constant,
+            volatile,
+            unaligned,
+        } = *modifier;
+
+        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        Modifier {
+            underlying_type,
+            constant,
+            volatile,
+            unaligned,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Member {
+    name: String,
+    underlying_type: Rc<Type>,
+    offset: usize,
+}
+
+type FromMember<'a, 'b> = (
+    &'b pdb::MemberType<'a>,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromMember<'_, '_>> for Member {
+    fn from(data: FromMember<'_, '_>) -> Self {
+        let (member, type_finder, output_pdb) = data;
+
+        let pdb::MemberType {
+            attributes,
+            field_type,
+            offset,
+            name,
+        } = *member;
+
+        let underlying_type = crate::parse::handle_type(field_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        Member {
+            name: name.to_string().into_owned(),
+            underlying_type,
+            offset: offset as usize,
+        }
     }
 }

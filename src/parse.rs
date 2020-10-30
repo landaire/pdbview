@@ -53,7 +53,7 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
     let mut iter = type_information.iter();
     while let Some(typ) = iter.next()? {
         let typ = handle_type(typ.index(), &mut output_pdb, &type_finder)?;
-        println!("{:?}", typ);
+        println!("{:#?}", typ);
     }
 
     debug!("grabbing public symbols");
@@ -182,11 +182,11 @@ pub fn handle_type_data(
     use crate::type_info::Type;
     let typ = match typ {
         TypeData::Class(data) => {
-            let class: crate::type_info::Class = (data, type_finder, &output_pdb.types).into();
+            let class: crate::type_info::Class = (data, type_finder, output_pdb).into();
             Rc::new(Type::Class(class))
         }
         TypeData::Union(data) => {
-            let typ: crate::type_info::Union = (data, type_finder, &output_pdb.types).into();
+            let typ: crate::type_info::Union = (data, type_finder, output_pdb).into();
             Rc::new(Type::Union(typ))
         }
         TypeData::Bitfield(data) => {
@@ -216,6 +216,14 @@ pub fn handle_type_data(
         TypeData::FieldList(data) => {
             let typ: crate::type_info::FieldList = (data, type_finder, output_pdb).into();
             Rc::new(Type::FieldList(typ))
+        }
+        TypeData::Modifier(data) => {
+            let typ: crate::type_info::Modifier = (data, type_finder, output_pdb).into();
+            Rc::new(Type::Modifier(typ))
+        }
+        TypeData::Member(data) => {
+            let typ: crate::type_info::Member = (data, type_finder, output_pdb).into();
+            Rc::new(Type::Member(typ))
         }
         other => {
             warn!("Unhandled type: {:?}", other);
