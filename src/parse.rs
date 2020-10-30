@@ -182,47 +182,47 @@ pub fn handle_type_data(
     use crate::type_info::Type;
     let typ = match typ {
         TypeData::Class(data) => {
-            let class: crate::type_info::Class = (data, type_finder, output_pdb).into();
+            let class = (data, type_finder, output_pdb).into();
             Type::Class(class)
         }
         TypeData::Union(data) => {
-            let typ: crate::type_info::Union = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Union(typ)
         }
         TypeData::Bitfield(data) => {
-            let typ: crate::type_info::Bitfield = (data, type_finder, &output_pdb.types).into();
+            let typ = (data, type_finder, &output_pdb.types).into();
             Type::Bitfield(typ)
         }
         TypeData::Array(data) => {
-            let typ: crate::type_info::Array = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Array(typ)
         }
         TypeData::Enumerate(data) => {
-            let typ: crate::type_info::EnumVariant = data.into();
+            let typ = data.into();
             Type::EnumVariant(typ)
         }
         TypeData::Enumeration(data) => {
-            let typ: crate::type_info::Enumeration = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Enumeration(typ)
         }
         TypeData::Pointer(data) => {
-            let typ: crate::type_info::Pointer = (data, type_finder, &output_pdb.types).into();
+            let typ = (data, type_finder, &output_pdb.types).into();
             Type::Pointer(typ)
         }
         TypeData::Primitive(data) => {
-            let typ: crate::type_info::Primitive = data.into();
+            let typ = data.into();
             Type::Primitive(typ)
         }
         TypeData::FieldList(data) => {
-            let typ: crate::type_info::FieldList = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::FieldList(typ)
         }
         TypeData::Modifier(data) => {
-            let typ: crate::type_info::Modifier = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Modifier(typ)
         }
         TypeData::Member(data) => {
-            let typ: crate::type_info::Member = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Member(typ)
         }
         other => {
