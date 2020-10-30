@@ -38,7 +38,7 @@ pub enum Type {
 impl TypeSize for Type {
     fn type_size(&self) -> usize {
         match self {
-            Type::Class(class) => class.size,
+            Type::Class(class) => class.type_size(),
             Type::Union(union) => union.size,
             Type::Bitfield(bitfield) => bitfield.underlying_type.type_size(),
             Type::Enumeration(e) => e.underlying_type.type_size(),
@@ -69,13 +69,90 @@ impl TypeSize for Type {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct TypeProperties {
+    packed: bool,
+    constructors: bool,
+    overlapped_operators: bool,
+    is_nested_type: bool,
+    contains_nested_types: bool,
+    overload_assignment: bool,
+    overload_coasting: bool,
+    forward_reference: bool,
+    scoped_definition: bool,
+    has_unique_name: bool,
+    sealed: bool,
+    hfa: u8,
+    intristic_type: bool,
+    mocom: u8,
+}
+
+impl From<pdb::TypeProperties> for TypeProperties {
+    fn from(props: pdb::TypeProperties) -> Self {
+        TypeProperties {
+            packed: props.packed(),
+            constructors: props.constructors(),
+            overlapped_operators: props.overloaded_operators(),
+            is_nested_type: props.is_nested_type(),
+            contains_nested_types: props.contains_nested_types(),
+            overload_assignment: props.overloaded_assignment(),
+            overload_coasting: props.overloaded_casting(),
+            forward_reference: props.forward_reference(),
+            scoped_definition: props.scoped_definition(),
+            has_unique_name: props.has_unique_name(),
+            sealed: props.sealed(),
+            hfa: props.hfa(),
+            intristic_type: props.intrinsic_type(),
+            mocom: props.mocom(),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Class {
     name: String,
     unique_name: Option<String>,
     kind: ClassKind,
+    properties: TypeProperties,
     derived_from: Option<Rc<Type>>,
     fields: Vec<Rc<Type>>,
     size: usize,
+}
+
+// impl Class {
+//     pub fn find_forward_reference(
+//         &self,
+//         output_pdb: &crate::symbol_types::ParsedPdb,
+//     ) -> Option<&Class> {
+//         output_pdb.types.iter().find_map(|(_key, value)| {
+//             if let Type::Class(class) = value.as_ref() {
+//                 if !class.properties.has_unique_name
+//                     && !class.properties.forward_reference
+//                     && class.unique_name == self.unique_name
+//                 {
+//                     return Some(class);
+//                 }
+//             }
+
+//             None
+//         })
+//     }
+// }
+
+impl TypeSize for Class {
+    fn type_size(&self) -> usize {
+        // if let Some(forward_ref) = self.find_forward_reference() {
+        //     if let Type::Class(class) = forward_ref.as_ref() {
+        //         class.type_size();
+        //     } else {
+        //         panic!(
+        //             "unexpected type returned for forward reference: {:?}",
+        //             forward_ref
+        //         );
+        //     }
+        // }
+
+        self.size
+    }
 }
 
 type FromClass<'a, 'b> = (
@@ -145,6 +222,7 @@ impl From<FromClass<'_, '_>> for Class {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             kind: kind.into(),
+            properties: properties.into(),
             derived_from,
             fields,
             size: size as usize,
@@ -710,12 +788,12 @@ impl From<FromArray<'_, '_>> for Array {
         let mut dimensions_elements = vec![];
         println!("{:?}", array);
         println!("{:?}", dimensions);
-        // for bytes in dimensions {
-        //     println!("{:#?}", element_type);
-        //     let elements = (*bytes as usize) / last_element_size;
-        //     dimensions_elements.push(elements);
-        //     last_element_size = *bytes as usize;
-        // }
+        for bytes in dimensions {
+            println!("{:#?}", element_type);
+            let elements = (*bytes as usize) / last_element_size;
+            dimensions_elements.push(elements);
+            last_element_size = *bytes as usize;
+        }
 
         Array {
             element_type,
