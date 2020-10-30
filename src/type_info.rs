@@ -139,7 +139,7 @@ impl From<FromClass<'_, '_>> for Class {
                 eprintln!("{:?}", b);
             }
             eprintln!("{:?}", properties.hfa());
-            panic!("{:#X?}", class);
+            eprintln!("{:#X?}", class);
         }
         Class {
             name: name.to_string().into_owned(),
@@ -710,12 +710,12 @@ impl From<FromArray<'_, '_>> for Array {
         let mut dimensions_elements = vec![];
         println!("{:?}", array);
         println!("{:?}", dimensions);
-        for bytes in dimensions {
-            println!("{:#?}", element_type);
-            let elements = (*bytes as usize) / last_element_size;
-            dimensions_elements.push(elements);
-            last_element_size = *bytes as usize;
-        }
+        // for bytes in dimensions {
+        //     println!("{:#?}", element_type);
+        //     let elements = (*bytes as usize) / last_element_size;
+        //     dimensions_elements.push(elements);
+        //     last_element_size = *bytes as usize;
+        // }
 
         Array {
             element_type,
