@@ -11,6 +11,7 @@ trait TypeSize {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum Type {
     Class(Class),
+    VirtualBaseClass(VirtualBaseClass),
     Union(Union),
     Bitfield(Bitfield),
     Enumeration(Enumeration),
@@ -19,8 +20,19 @@ pub enum Type {
     Primitive(Primitive),
     Array(Array),
     FieldList(FieldList),
+    ArgumentList(ArgumentList),
     Modifier(Modifier),
     Member(Member),
+    Procedure(Procedure),
+    MemberFunction(MemberFunction),
+    MethodList(MethodList),
+    MethodListEntry(MethodListEntry),
+    Nested(Nested),
+    OverloadedMethod(OverloadedMethod),
+    Method(Method),
+    StaticMember(StaticMember),
+    BaseClass(BaseClass),
+    VTable(VTable),
 }
 
 impl TypeSize for Type {
@@ -30,7 +42,7 @@ impl TypeSize for Type {
             Type::Union(union) => union.size,
             Type::Bitfield(bitfield) => bitfield.underlying_type.type_size(),
             Type::Enumeration(e) => e.underlying_type.type_size(),
-            Type::Pointer(p) => p.underlying_type.type_size(),
+            Type::Pointer(p) => p.attributes.kind.type_size(),
             Type::Primitive(p) => p.type_size(),
             Type::Array(a) => a.size,
             Type::FieldList(fields) => fields
@@ -38,8 +50,20 @@ impl TypeSize for Type {
                 .iter()
                 .fold(0, |acc, field| acc + field.type_size()),
             Type::EnumVariant(_) => panic!("type_size() invoked for EnumVariant"),
-            Type::Modifier(_) => panic!("type_size() invoked for Modifier"),
-            Type::Member(_) => panic!("type_size() invoked for Modifier"),
+            Type::Modifier(modifier) => modifier.underlying_type.type_size(),
+            Type::Member(_) => panic!("type_size() invoked for Member"),
+            Type::ArgumentList(_) => panic!("type_size() invoked for ArgumentList"),
+            Type::Procedure(_) => panic!("type_size() invoked for Procedure"),
+            Type::MemberFunction(_) => panic!("type_size() invoked for MemberFunction"),
+            Type::MethodList(_) => panic!("type_size() invoked for MethodList"),
+            Type::MethodListEntry(_) => panic!("type_size() invoked for MethodListEntry"),
+            Type::VirtualBaseClass(_) => panic!("type_size() invoked for VirtualBaseClass"),
+            Type::Nested(_) => panic!("type_size() invoked for Nested"),
+            Type::OverloadedMethod(_) => panic!("type_size() invoked for overloaded method"),
+            Type::Method(_) => panic!("type_size() invoked for overloaded method"),
+            Type::StaticMember(_) => panic!("type_size() invoked for StaticMember"),
+            Type::VTable(_) => panic!("type_size() invoked for VTable"),
+            Type::BaseClass(_) => panic!("type_size() invoked for BaseClass"),
         }
     }
 }
@@ -49,6 +73,7 @@ pub struct Class {
     name: String,
     unique_name: Option<String>,
     kind: ClassKind,
+    derived_from: Option<Rc<Type>>,
     fields: Vec<Rc<Type>>,
     size: usize,
 }
@@ -90,12 +115,116 @@ impl From<FromClass<'_, '_>> for Class {
             })
             .unwrap_or_default();
 
+        let derived_from = derived_from.map(|type_index| {
+            crate::parse::handle_type(type_index, output_pdb, type_finder)
+                .expect("failed to resolve dependent type")
+        });
+
+        if name.to_string() == "_SCOPE_TABLE_ARM::<unnamed-type-ScopeRecord>" {
+            let bools = [
+                properties.constructors(),
+                properties.contains_nested_types(),
+                properties.forward_reference(),
+                properties.has_unique_name(),
+                properties.intrinsic_type(),
+                properties.is_nested_type(),
+                properties.overloaded_assignment(),
+                properties.overloaded_casting(),
+                properties.overloaded_operators(),
+                properties.packed(),
+                properties.scoped_definition(),
+                properties.sealed(),
+            ];
+            for b in &bools {
+                eprintln!("{:?}", b);
+            }
+            eprintln!("{:?}", properties.hfa());
+            panic!("{:?}", class);
+        }
         Class {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             kind: kind.into(),
+            derived_from,
             fields,
             size: size as usize,
+        }
+    }
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct BaseClass {
+    kind: ClassKind,
+    base_class: Rc<Type>,
+    offset: usize,
+}
+
+type FromBaseClass<'a, 'b> = (
+    &'b pdb::BaseClassType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromBaseClass<'_, '_>> for BaseClass {
+    fn from(info: FromBaseClass<'_, '_>) -> Self {
+        let (class, type_finder, output_pdb) = info;
+
+        let pdb::BaseClassType {
+            kind,
+            attributes,
+            base_class,
+            offset,
+        } = *class;
+
+        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)
+            .expect("failed to resolve dependent type");
+
+        BaseClass {
+            kind: kind.into(),
+            base_class,
+            offset: offset as usize,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VirtualBaseClass {
+    direct: bool,
+    base_class: Rc<Type>,
+    base_pointer: Rc<Type>,
+    base_pointer_offset: usize,
+    virtual_base_offset: usize,
+}
+
+type FromVirtualBaseClass<'a, 'b> = (
+    &'b pdb::VirtualBaseClassType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
+    fn from(info: FromVirtualBaseClass<'_, '_>) -> Self {
+        let (class, type_finder, output_pdb) = info;
+
+        let pdb::VirtualBaseClassType {
+            direct,
+            attributes,
+            base_class,
+            base_pointer,
+            base_pointer_offset,
+            virtual_base_offset,
+        } = *class;
+
+        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)
+            .expect("failed to resolve underlying type");
+        let base_pointer = crate::parse::handle_type(base_pointer, output_pdb, type_finder)
+            .expect("failed to resolve underlying type");
+
+        VirtualBaseClass {
+            direct,
+            base_class,
+            base_pointer,
+            base_pointer_offset: base_pointer_offset as usize,
+            virtual_base_offset: virtual_base_offset as usize,
         }
     }
 }
@@ -140,25 +269,31 @@ impl From<FromUnion<'_, '_>> for Union {
             fields,
             name,
             unique_name,
-        } = *union;
+        } = union;
+
+        let fields = crate::parse::handle_type(*fields, parsed_pdb, type_finder)
+            .expect("failed to resolve dependent type");
 
         // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
-        let fields = if let Type::FieldList(fields) =
-            crate::parse::handle_type(fields, parsed_pdb, type_finder)
-                .expect("failed to resolve dependent type")
-                .as_ref()
-        {
-            fields.0.clone()
+        let fields = if *count > 0 {
+            if let Type::FieldList(fields) = fields.as_ref() {
+                fields.0.clone()
+            } else {
+                panic!(
+                "got an unexpected type when FieldList was expected. union: {:#?}\n fields: {:#?}",
+                union, fields
+            );
+            }
         } else {
-            panic!("got an unexpected type when FieldList was expected")
+            vec![]
         };
 
         Union {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
-            size: size as usize,
-            count: count as usize,
-            fields: vec![],
+            size: *size as usize,
+            count: *count as usize,
+            fields,
         }
     }
 }
@@ -295,28 +430,26 @@ impl From<&FromVariant> for VariantValue {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Pointer {
     // TODO: we don't know the width of the pointer
-    underlying_type: Rc<Type>,
+    underlying_type: Option<Rc<Type>>,
     attributes: PointerAttributes,
 }
 
 type FromPointer<'a, 'b> = (
     &'b pdb::PointerType,
     &'b pdb::TypeFinder<'a>,
-    &'b HashMap<u32, Rc<Type>>,
+    &'b mut crate::symbol_types::ParsedPdb,
 );
 impl From<FromPointer<'_, '_>> for Pointer {
     fn from(data: FromPointer<'_, '_>) -> Self {
-        let (pointer, type_finder, parsed_types) = data;
+        let (pointer, type_finder, output_pdb) = data;
         let pdb::PointerType {
             underlying_type,
             attributes,
             containing_class,
         } = *pointer;
 
-        let underlying_type = match parsed_types.get(&underlying_type.0) {
-            Some(typ) => Rc::clone(typ),
-            None => panic!("dependent type has not yet been parsed"),
-        };
+        let underlying_type =
+            crate::parse::handle_type(underlying_type, output_pdb, type_finder).ok();
 
         Pointer {
             underlying_type,
@@ -326,7 +459,56 @@ impl From<FromPointer<'_, '_>> for Pointer {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
+pub enum PointerKind {
+    Near16,
+    Far16,
+    Huge16,
+    BaseSeg,
+    BaseVal,
+    BaseSegVal,
+    BaseAddr,
+    BaseSegAddr,
+    BaseType,
+    BaseSelf,
+    Near32,
+    Far32,
+    Ptr64,
+}
+
+impl From<pdb::PointerKind> for PointerKind {
+    fn from(kind: pdb::PointerKind) -> Self {
+        match kind {
+            pdb::PointerKind::Near16 => PointerKind::Near16,
+            pdb::PointerKind::Far16 => PointerKind::Far16,
+            pdb::PointerKind::Huge16 => PointerKind::Huge16,
+            pdb::PointerKind::BaseSeg => PointerKind::BaseSeg,
+            pdb::PointerKind::BaseVal => PointerKind::BaseVal,
+            pdb::PointerKind::BaseSegVal => PointerKind::BaseSegVal,
+            pdb::PointerKind::BaseAddr => PointerKind::BaseAddr,
+            pdb::PointerKind::BaseSegAddr => PointerKind::BaseSegAddr,
+            pdb::PointerKind::BaseType => PointerKind::BaseType,
+            pdb::PointerKind::BaseSelf => PointerKind::BaseSelf,
+            pdb::PointerKind::Near32 => PointerKind::Near32,
+            pdb::PointerKind::Far32 => PointerKind::Far32,
+            pdb::PointerKind::Ptr64 => PointerKind::Ptr64,
+        }
+    }
+}
+
+impl TypeSize for PointerKind {
+    fn type_size(&self) -> usize {
+        match self {
+            PointerKind::Near16 | PointerKind::Far16 | PointerKind::Huge16 => 2,
+            PointerKind::Near32 | PointerKind::Far32 => 4,
+            PointerKind::Ptr64 => 8,
+            other => panic!("type_size() not implemented for pointer type: {:?}", other),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct PointerAttributes {
+    kind: PointerKind,
     is_volatile: bool,
     is_const: bool,
     is_unaligned: bool,
@@ -339,6 +521,7 @@ pub struct PointerAttributes {
 impl From<pdb::PointerAttributes> for PointerAttributes {
     fn from(attr: pdb::PointerAttributes) -> Self {
         PointerAttributes {
+            kind: attr.pointer_kind().into(),
             is_volatile: attr.is_volatile(),
             is_const: attr.is_const(),
             is_unaligned: attr.is_unaligned(),
@@ -459,14 +642,17 @@ impl TypeSize for Primitive {
             | Primitive::U8
             | Primitive::Bool8 => 1,
 
-            Primitive::Short
+            Primitive::RChar16
+            | Primitive::WChar
+            | Primitive::Short
             | Primitive::UShort
             | Primitive::I16
             | Primitive::U16
             | Primitive::F16
             | Primitive::Bool16 => 2,
 
-            Primitive::Long
+            Primitive::RChar32
+            | Primitive::Long
             | Primitive::ULong
             | Primitive::I32
             | Primitive::U32
@@ -480,7 +666,7 @@ impl TypeSize for Primitive {
             | Primitive::I64
             | Primitive::U64
             | Primitive::F64
-            | Primitive::Bool32 => 8,
+            | Primitive::Bool64 => 8,
             Primitive::Octa | Primitive::UOcta | Primitive::I128 | Primitive::U128 => 16,
             _ => panic!("type size not handled for type: {:?}", self),
         }
@@ -500,12 +686,12 @@ pub struct Array {
 type FromArray<'a, 'b> = (
     &'b pdb::ArrayType,
     &'b pdb::TypeFinder<'a>,
-    &'b HashMap<u32, Rc<Type>>,
+    &'b mut crate::symbol_types::ParsedPdb,
 );
 
 impl From<FromArray<'_, '_>> for Array {
     fn from(data: FromArray<'_, '_>) -> Self {
-        let (array, type_finder, parsed_types) = data;
+        let (array, type_finder, output_pdb) = data;
 
         let pdb::ArrayType {
             element_type,
@@ -514,21 +700,18 @@ impl From<FromArray<'_, '_>> for Array {
             dimensions,
         } = array;
 
-        let element_type = match parsed_types.get(&element_type.0) {
-            Some(typ) => Rc::clone(typ),
-            None => panic!("dependent type has not yet been parsed"),
-        };
+        let element_type = crate::parse::handle_type(*element_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
 
-        let indexing_type = match parsed_types.get(&indexing_type.0) {
-            Some(typ) => Rc::clone(typ),
-            None => panic!("dependent type has not yet been parsed"),
-        };
-
+        let indexing_type = crate::parse::handle_type(*indexing_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
         let size = *dimensions.last().unwrap() as usize;
         let mut last_element_size = element_type.type_size();
         let mut dimensions_elements = vec![];
+        println!("{:?}", array);
         println!("{:?}", dimensions);
         for bytes in dimensions {
+            println!("{:#?}", element_type);
             let elements = (*bytes as usize) / last_element_size;
             dimensions_elements.push(elements);
             last_element_size = *bytes as usize;
@@ -586,6 +769,34 @@ impl From<FromFieldList<'_, '_>> for FieldList {
         }
 
         FieldList(result_fields)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ArgumentList(Vec<Rc<Type>>);
+
+type FromArgumentList<'a, 'b> = (
+    &'b pdb::ArgumentList,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromArgumentList<'_, '_>> for ArgumentList {
+    fn from(data: FromArgumentList<'_, '_>) -> Self {
+        let (arguments, type_finder, output_pdb) = data;
+
+        let pdb::ArgumentList { arguments } = arguments;
+
+        let arguments: Vec<Rc<Type>> = arguments
+            .iter()
+            .map(|typ| {
+                crate::parse::handle_type(*typ, output_pdb, type_finder)
+                    .ok()
+                    .unwrap_or_else(|| panic!("failed to parse dependent type"))
+            })
+            .collect();
+
+        ArgumentList(arguments)
     }
 }
 
@@ -658,5 +869,318 @@ impl From<FromMember<'_, '_>> for Member {
             underlying_type,
             offset: offset as usize,
         }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Procedure {
+    return_type: Option<Rc<Type>>,
+    argument_list: Vec<Rc<Type>>,
+}
+
+type FromProcedure<'a, 'b> = (
+    &'b pdb::ProcedureType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromProcedure<'_, '_>> for Procedure {
+    fn from(data: FromProcedure<'_, '_>) -> Self {
+        let (proc, type_finder, output_pdb) = data;
+
+        let pdb::ProcedureType {
+            return_type,
+            attributes,
+            parameter_count,
+            argument_list,
+        } = *proc;
+
+        let return_type = return_type.map(|return_type| {
+            crate::parse::handle_type(return_type, output_pdb, type_finder)
+                .expect("failed to parse dependent type")
+        });
+
+        let arguments: Vec<Rc<Type>>;
+        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+        if let Type::ArgumentList(argument_list) = field.as_ref() {
+            arguments = argument_list.0.clone();
+        } else {
+            panic!(
+                "unexpected type returned while getting FieldList continuation: {:?}",
+                field
+            )
+        }
+
+        Procedure {
+            return_type,
+            argument_list: arguments,
+        }
+    }
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MemberFunction {
+    return_type: Rc<Type>,
+    class_type: Rc<Type>,
+    this_pointer_type: Option<Rc<Type>>,
+    argument_list: Vec<Rc<Type>>,
+}
+
+type FromMemberFunction<'a, 'b> = (
+    &'b pdb::MemberFunctionType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromMemberFunction<'_, '_>> for MemberFunction {
+    fn from(data: FromMemberFunction<'_, '_>) -> Self {
+        let (member, type_finder, output_pdb) = data;
+
+        let pdb::MemberFunctionType {
+            return_type,
+            class_type,
+            this_pointer_type,
+            attributes,
+            parameter_count,
+            argument_list,
+            this_adjustment,
+        } = *member;
+
+        let return_type = crate::parse::handle_type(return_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        let class_type = crate::parse::handle_type(class_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        let this_pointer_type = this_pointer_type.map(|ptr_type| {
+            crate::parse::handle_type(ptr_type, output_pdb, type_finder)
+                .expect("failed to parse dependent type")
+        });
+
+        let arguments: Vec<Rc<Type>>;
+        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+        if let Type::ArgumentList(argument_list) = field.as_ref() {
+            arguments = argument_list.0.clone();
+        } else {
+            panic!(
+                "unexpected type returned while getting FieldList continuation: {:?}",
+                field
+            )
+        }
+
+        MemberFunction {
+            return_type,
+            class_type,
+            this_pointer_type,
+            argument_list: arguments,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MethodList(Vec<MethodListEntry>);
+
+type FromMethodList<'a, 'b> = (
+    &'b pdb::MethodList,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromMethodList<'_, '_>> for MethodList {
+    fn from(data: FromMethodList<'_, '_>) -> Self {
+        let (method_list, type_finder, output_pdb) = data;
+
+        let pdb::MethodList { methods } = method_list;
+        let converted_methods = methods
+            .iter()
+            .map(|method| (method, type_finder, &mut *output_pdb).into())
+            .collect();
+
+        MethodList(converted_methods)
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct MethodListEntry {
+    method_type: Rc<Type>,
+    vtable_offset: Option<usize>,
+}
+
+type FromMethodListEntry<'a, 'b> = (
+    &'b pdb::MethodListEntry,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromMethodListEntry<'_, '_>> for MethodListEntry {
+    fn from(data: FromMethodListEntry<'_, '_>) -> Self {
+        let (method_list, type_finder, output_pdb) = data;
+
+        let pdb::MethodListEntry {
+            attributes,
+            method_type,
+            vtable_offset,
+        } = *method_list;
+
+        let method_type = crate::parse::handle_type(method_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        MethodListEntry {
+            method_type,
+            vtable_offset: vtable_offset.map(|offset| offset as usize),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Nested {
+    name: String,
+    nested_type: Rc<Type>,
+}
+
+type FromNested<'a, 'b> = (
+    &'b pdb::NestedType<'a>,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromNested<'_, '_>> for Nested {
+    fn from(data: FromNested<'_, '_>) -> Self {
+        let (method_list, type_finder, output_pdb) = data;
+
+        let pdb::NestedType {
+            attributes,
+            nested_type,
+            name,
+        } = *method_list;
+
+        let nested_type = crate::parse::handle_type(nested_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        Nested {
+            name: name.to_string().into_owned(),
+            nested_type,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct OverloadedMethod {
+    name: String,
+    method_list: Rc<Type>,
+}
+
+type FromOverloadedMethod<'a, 'b> = (
+    &'b pdb::OverloadedMethodType<'a>,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
+    fn from(data: FromOverloadedMethod<'_, '_>) -> Self {
+        let (method_list, type_finder, output_pdb) = data;
+
+        let pdb::OverloadedMethodType {
+            count,
+            method_list,
+            name,
+        } = method_list;
+
+        let method_list = crate::parse::handle_type(*method_list, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        OverloadedMethod {
+            name: name.to_string().into_owned(),
+            method_list,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Method {
+    name: String,
+    method_type: Rc<Type>,
+    vtable_offset: Option<usize>,
+}
+
+type FromMethod<'a, 'b> = (
+    &'b pdb::MethodType<'a>,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromMethod<'_, '_>> for Method {
+    fn from(data: FromMethod<'_, '_>) -> Self {
+        let (method_list, type_finder, output_pdb) = data;
+
+        let pdb::MethodType {
+            attributes,
+            method_type,
+            vtable_offset,
+            name,
+        } = method_list;
+
+        let method_type = crate::parse::handle_type(*method_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        Method {
+            name: name.to_string().into_owned(),
+            method_type,
+            vtable_offset: vtable_offset.map(|offset| offset as usize),
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct StaticMember {
+    name: String,
+    field_type: Rc<Type>,
+}
+
+type FromStaticMember<'a, 'b> = (
+    &'b pdb::StaticMemberType<'a>,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromStaticMember<'_, '_>> for StaticMember {
+    fn from(data: FromStaticMember<'_, '_>) -> Self {
+        let (member, type_finder, output_pdb) = data;
+
+        let pdb::StaticMemberType {
+            attributes,
+            field_type,
+            name,
+        } = member;
+
+        let field_type = crate::parse::handle_type(*field_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        StaticMember {
+            name: name.to_string().into_owned(),
+            field_type,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct VTable(Rc<Type>);
+type FromVirtualFunctionTablePointer<'a, 'b> = (
+    &'b pdb::VirtualFunctionTablePointerType,
+    &'b pdb::TypeFinder<'a>,
+    &'b mut crate::symbol_types::ParsedPdb,
+);
+
+impl From<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
+    fn from(data: FromVirtualFunctionTablePointer<'_, '_>) -> Self {
+        let (member, type_finder, output_pdb) = data;
+
+        let pdb::VirtualFunctionTablePointerType { table } = *member;
+
+        let vtable_type = crate::parse::handle_type(table, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
+
+        VTable(vtable_type)
     }
 }

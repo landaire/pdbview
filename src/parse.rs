@@ -52,7 +52,14 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
 
     let mut iter = type_information.iter();
     while let Some(typ) = iter.next()? {
-        let typ = handle_type(typ.index(), &mut output_pdb, &type_finder)?;
+        let typ = match handle_type(typ.index(), &mut output_pdb, &type_finder) {
+            Ok(typ) => typ,
+            Err(ParsingError::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
+                warn!("Could not parse type: {}", e);
+                continue;
+            }
+            Err(e) => return Err(e.into()),
+        };
         println!("{:#?}", typ);
     }
 
@@ -162,6 +169,10 @@ pub fn handle_type(
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
 ) -> Result<Rc<crate::type_info::Type>, ParsingError> {
+    let typ = type_finder.find(idx).expect("failed to resolve type");
+    if idx.0 == 0x1145 {
+        eprintln!("{:#?}", typ.parse()?);
+    }
     if let Some(typ) = output_pdb.types.get(&idx.0) {
         return Ok(Rc::clone(typ));
     }
@@ -206,7 +217,7 @@ pub fn handle_type_data(
             Type::Enumeration(typ)
         }
         TypeData::Pointer(data) => {
-            let typ = (data, type_finder, &output_pdb.types).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Pointer(typ)
         }
         TypeData::Primitive(data) => {
@@ -224,6 +235,50 @@ pub fn handle_type_data(
         TypeData::Member(data) => {
             let typ = (data, type_finder, output_pdb).into();
             Type::Member(typ)
+        }
+        TypeData::ArgumentList(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::ArgumentList(typ)
+        }
+        TypeData::Procedure(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::Procedure(typ)
+        }
+        TypeData::MemberFunction(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::MemberFunction(typ)
+        }
+        TypeData::MethodList(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::MethodList(typ)
+        }
+        TypeData::VirtualBaseClass(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::VirtualBaseClass(typ)
+        }
+        TypeData::Nested(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::Nested(typ)
+        }
+        TypeData::OverloadedMethod(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::OverloadedMethod(typ)
+        }
+        TypeData::Method(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::Method(typ)
+        }
+        TypeData::StaticMember(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::StaticMember(typ)
+        }
+        TypeData::BaseClass(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::BaseClass(typ)
+        }
+        TypeData::VirtualFunctionTablePointer(data) => {
+            let typ = (data, type_finder, output_pdb).into();
+            Type::VTable(typ)
         }
         other => {
             warn!("Unhandled type: {:?}", other);
