@@ -5,7 +5,8 @@ use structopt::StructOpt;
 mod error;
 mod output;
 mod parse;
-mod typeinfo;
+mod symbol_types;
+mod type_info;
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pdbview")]

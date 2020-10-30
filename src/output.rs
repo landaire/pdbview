@@ -1,4 +1,4 @@
-use crate::typeinfo::ParsedPdb;
+use crate::symbol_types::ParsedPdb;
 use std::io::{self, Write};
 
 pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<()> {
@@ -14,7 +14,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
     if let Some(compiler_info) = &pdb_info.assembly_info.compiler_info {
         writeln!(output, "\t\tLanguage: {}", compiler_info.language)?;
 
-        let crate::typeinfo::CompileFlags {
+        let crate::symbol_types::CompileFlags {
             edit_and_continue,
             no_debug_info,
             link_time_codegen,
@@ -111,11 +111,11 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
             output,
             "\t\t\t{:width$} {}",
             "Is .exp module:",
-            pgo,
+            exp_module,
             width = width
         )?;
         writeln!(output, "\t\tCPU type: {}", compiler_info.cpu_type,)?;
-        let crate::typeinfo::CompilerVersion {
+        let crate::symbol_types::CompilerVersion {
             major,
             minor,
             build,
@@ -131,7 +131,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                 .unwrap_or_else(|| "None".to_string())
         )?;
 
-        let crate::typeinfo::CompilerVersion {
+        let crate::symbol_types::CompilerVersion {
             major,
             minor,
             build,

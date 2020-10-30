@@ -145,7 +145,6 @@ dependencies = [
 [[package]]
 name = "pdb"
 version = "0.6.0"
-source = "git+https://github.com/landaire/pdb.git#62aedc01da9cf935df6485332cec90e41fed49fc"
 dependencies = [
  "fallible-iterator",
  "scroll",

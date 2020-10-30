@@ -19,4 +19,4 @@ serde = { version = "1.0", features = ['derive', 'rc'] }
 serde_json = "1.0"
 
 [patch.crates-io]
-pdb = {git = "https://github.com/landaire/pdb.git"}
+pdb = {path = "../pdb"}

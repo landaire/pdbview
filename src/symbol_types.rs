@@ -1,7 +1,8 @@
+use crate::type_info::Type;
 use log::warn;
 use pdb::FallibleIterator;
 use serde::Serialize;
-use std::borrow::Cow;
+use std::collections::HashMap;
 use std::convert::{From, TryFrom};
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -12,7 +13,7 @@ pub struct ParsedPdb {
     pub path: PathBuf,
     pub assembly_info: AssemblyInfo,
     pub public_symbols: Vec<PublicSymbol>,
-    pub types: Vec<Rc<Type>>,
+    pub types: HashMap<u32, Rc<Type>>,
     pub procedures: Vec<Procedure>,
     pub global_data: Vec<Data>,
     pub debug_modules: Vec<DebugModule>,
@@ -25,7 +26,7 @@ impl ParsedPdb {
             path,
             assembly_info: AssemblyInfo::default(),
             public_symbols: vec![],
-            types: vec![],
+            types: Default::default(),
             procedures: vec![],
             global_data: vec![],
             debug_modules: vec![],
@@ -333,19 +334,6 @@ pub struct Data {
     typ: Rc<Type>,
 
     offset: usize,
-}
-
-// pub enum Type {
-//     Class(),
-// }
-
-#[derive(Debug, Serialize)]
-pub struct Type {
-    name: String,
-    fields: Vec<(String, Type)>,
-
-    /// length of this field in BITS
-    len: usize,
 }
 
 #[derive(Debug, Serialize)]

@@ -1,11 +1,12 @@
 use crate::error::ParsingError;
-use crate::typeinfo::*;
+use crate::symbol_types::*;
 use anyhow::Result;
 use log::{debug, warn};
 use pdb::*;
 use std::convert::TryInto;
 use std::fs::File;
 use std::path::Path;
+use std::rc::Rc;
 
 pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
     let file = File::open(path.as_ref())?;
@@ -47,6 +48,12 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
     let mut iter = type_information.iter();
     while let Some(typ) = iter.next()? {
         type_finder.update(&iter);
+    }
+
+    let mut iter = type_information.iter();
+    while let Some(typ) = iter.next()? {
+        let typ = handle_type(typ.index(), &mut output_pdb, &type_finder)?;
+        println!("{:?}", typ);
     }
 
     debug!("grabbing public symbols");
@@ -118,25 +125,25 @@ fn handle_symbol(
         SymbolData::Public(data) => {
             debug!("public symbol: {:?}", data);
 
-            let converted_symbol: crate::typeinfo::PublicSymbol =
+            let converted_symbol: crate::symbol_types::PublicSymbol =
                 (data, base_address, address_map).into();
             output_pdb.public_symbols.push(converted_symbol);
         }
         SymbolData::Procedure(data) => {
             debug!("procedure: {:?}", data);
 
-            let converted_symbol: crate::typeinfo::Procedure =
+            let converted_symbol: crate::symbol_types::Procedure =
                 (data, base_address, address_map, type_finder).into();
             output_pdb.procedures.push(converted_symbol);
         }
         SymbolData::BuildInfo(data) => {
             debug!("build info: {:?}", data);
-            let converted_symbol: crate::typeinfo::BuildInfo = (&data, id_finder).try_into()?;
+            let converted_symbol: crate::symbol_types::BuildInfo = (&data, id_finder).try_into()?;
             output_pdb.assembly_info.build_info = Some(converted_symbol);
         }
         SymbolData::CompileFlags(data) => {
             debug!("compile flags: {:?}", data);
-            let sym: crate::typeinfo::CompilerInfo = data.into();
+            let sym: crate::symbol_types::CompilerInfo = data.into();
             output_pdb.assembly_info.compiler_info = Some(sym);
         }
         other => {
@@ -145,4 +152,76 @@ fn handle_symbol(
     }
 
     Ok(())
+}
+
+/// Converts a [pdb::SymbolData] object to a parsed symbol representation that
+/// we can serialize and adds it to the appropriate fields on the output [ParsedPdb].
+/// Errors returned from this function should not be considered fatal.
+pub fn handle_type(
+    idx: pdb::TypeIndex,
+    output_pdb: &mut ParsedPdb,
+    type_finder: &ItemFinder<'_, TypeIndex>,
+) -> Result<Rc<crate::type_info::Type>, ParsingError> {
+    if let Some(typ) = output_pdb.types.get(&idx.0) {
+        return Ok(Rc::clone(typ));
+    }
+
+    let typ = type_finder.find(idx).expect("failed to resolve type");
+
+    let typ = handle_type_data(&typ.parse()?, output_pdb, type_finder)?;
+    output_pdb.types.insert(idx.0, Rc::clone(&typ));
+
+    Ok(typ)
+}
+
+pub fn handle_type_data(
+    typ: &pdb::TypeData,
+    output_pdb: &mut ParsedPdb,
+    type_finder: &ItemFinder<'_, TypeIndex>,
+) -> Result<Rc<crate::type_info::Type>, ParsingError> {
+    use crate::type_info::Type;
+    let typ = match typ {
+        TypeData::Class(data) => {
+            let class: crate::type_info::Class = (data, type_finder, &output_pdb.types).into();
+            Rc::new(Type::Class(class))
+        }
+        TypeData::Union(data) => {
+            let typ: crate::type_info::Union = (data, type_finder, &output_pdb.types).into();
+            Rc::new(Type::Union(typ))
+        }
+        TypeData::Bitfield(data) => {
+            let typ: crate::type_info::Bitfield = (data, type_finder, &output_pdb.types).into();
+            Rc::new(Type::Bitfield(typ))
+        }
+        TypeData::Array(data) => {
+            let typ: crate::type_info::Array = (data, type_finder, &output_pdb.types).into();
+            Rc::new(Type::Array(typ))
+        }
+        TypeData::Enumerate(data) => {
+            let typ: crate::type_info::EnumVariant = data.into();
+            Rc::new(Type::EnumVariant(typ))
+        }
+        TypeData::Enumeration(data) => {
+            let typ: crate::type_info::Enumeration = (data, type_finder, output_pdb).into();
+            Rc::new(Type::Enumeration(typ))
+        }
+        TypeData::Pointer(data) => {
+            let typ: crate::type_info::Pointer = (data, type_finder, &output_pdb.types).into();
+            Rc::new(Type::Pointer(typ))
+        }
+        TypeData::Primitive(data) => {
+            let typ: crate::type_info::Primitive = data.into();
+            Rc::new(Type::Primitive(typ))
+        }
+        TypeData::FieldList(data) => {
+            let typ: crate::type_info::FieldList = (data, type_finder, output_pdb).into();
+            Rc::new(Type::FieldList(typ))
+        }
+        other => {
+            warn!("Unhandled type: {:?}", other);
+            panic!("type not handled: {:?}", other);
+        }
+    };
+
+    Ok(typ)
 }
