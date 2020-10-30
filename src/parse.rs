@@ -46,13 +46,14 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
     let type_information = pdb.type_information()?;
     let mut type_finder = type_information.finder();
     let mut iter = type_information.iter();
+    let mut discovered_types = vec![];
     while let Some(typ) = iter.next()? {
         type_finder.update(&iter);
+        discovered_types.push(typ.index());
     }
 
-    let mut iter = type_information.iter();
-    while let Some(typ) = iter.next()? {
-        let typ = match handle_type(typ.index(), &mut output_pdb, &type_finder) {
+    for typ in discovered_types.iter() {
+        let typ = match handle_type(*typ, &mut output_pdb, &type_finder) {
             Ok(typ) => typ,
             Err(ParsingError::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
                 warn!("Could not parse type: {}", e);
@@ -201,7 +202,7 @@ pub fn handle_type_data(
             Type::Union(typ)
         }
         TypeData::Bitfield(data) => {
-            let typ = (data, type_finder, &output_pdb.types).into();
+            let typ = (data, type_finder, output_pdb).into();
             Type::Bitfield(typ)
         }
         TypeData::Array(data) => {

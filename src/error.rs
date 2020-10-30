@@ -14,4 +14,6 @@ pub enum ParsingError {
     MissingDependency(&'static str),
     #[error("functionality `{0}` is currently unsupported")]
     Unsupported(&'static str),
+    #[error("a forward reference implmentation is needed")]
+    NeedForwardReferenceImplementation,
 }

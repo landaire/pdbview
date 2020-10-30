@@ -39,7 +39,7 @@ impl TypeSize for Type {
     fn type_size(&self) -> usize {
         match self {
             Type::Class(class) => class.type_size(),
-            Type::Union(union) => union.size,
+            Type::Union(union) => union.type_size(),
             Type::Bitfield(bitfield) => bitfield.underlying_type.type_size(),
             Type::Enumeration(e) => e.underlying_type.type_size(),
             Type::Pointer(p) => p.attributes.kind.type_size(),
@@ -109,47 +109,49 @@ impl From<pdb::TypeProperties> for TypeProperties {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Class {
-    name: String,
-    unique_name: Option<String>,
-    kind: ClassKind,
-    properties: TypeProperties,
-    derived_from: Option<Rc<Type>>,
-    fields: Vec<Rc<Type>>,
-    size: usize,
+    pub name: String,
+    pub unique_name: Option<String>,
+    pub kind: ClassKind,
+    pub properties: TypeProperties,
+    pub derived_from: Option<Rc<Type>>,
+    pub fields: Vec<Rc<Type>>,
+    pub size: usize,
+    pub forward_reference_for: Option<Rc<Type>>,
 }
 
-// impl Class {
-//     pub fn find_forward_reference(
-//         &self,
-//         output_pdb: &crate::symbol_types::ParsedPdb,
-//     ) -> Option<&Class> {
-//         output_pdb.types.iter().find_map(|(_key, value)| {
-//             if let Type::Class(class) = value.as_ref() {
-//                 if !class.properties.has_unique_name
-//                     && !class.properties.forward_reference
-//                     && class.unique_name == self.unique_name
-//                 {
-//                     return Some(class);
-//                 }
-//             }
+impl Class {
+    pub fn find_forward_reference(
+        &self,
+        output_pdb: &crate::symbol_types::ParsedPdb,
+    ) -> Option<Rc<Type>> {
+        if !self.properties.forward_reference {
+            return None;
+        }
 
-//             None
-//         })
-//     }
-// }
+        output_pdb.types.iter().find_map(|(_key, value)| {
+            if let Type::Class(class) = value.as_ref() {
+                if !class.properties.forward_reference && class.unique_name == self.unique_name {
+                    return Some(Rc::clone(value));
+                }
+            }
+
+            None
+        })
+    }
+}
 
 impl TypeSize for Class {
     fn type_size(&self) -> usize {
-        // if let Some(forward_ref) = self.find_forward_reference() {
-        //     if let Type::Class(class) = forward_ref.as_ref() {
-        //         class.type_size();
-        //     } else {
-        //         panic!(
-        //             "unexpected type returned for forward reference: {:?}",
-        //             forward_ref
-        //         );
-        //     }
-        // }
+        if let Some(forward_ref) = self.forward_reference_for.as_ref() {
+            if let Type::Class(class) = forward_ref.as_ref() {
+                class.type_size();
+            } else {
+                panic!(
+                    "unexpected type returned for forward reference: {:?}",
+                    forward_ref
+                );
+            }
+        }
 
         self.size
     }
@@ -197,28 +199,7 @@ impl From<FromClass<'_, '_>> for Class {
                 .expect("failed to resolve dependent type")
         });
 
-        if name.to_string() == "_SCOPE_TABLE_ARM::<unnamed-type-ScopeRecord>" {
-            let bools = [
-                properties.constructors(),
-                properties.contains_nested_types(),
-                properties.forward_reference(),
-                properties.has_unique_name(),
-                properties.intrinsic_type(),
-                properties.is_nested_type(),
-                properties.overloaded_assignment(),
-                properties.overloaded_casting(),
-                properties.overloaded_operators(),
-                properties.packed(),
-                properties.scoped_definition(),
-                properties.sealed(),
-            ];
-            for b in &bools {
-                eprintln!("{:?}", b);
-            }
-            eprintln!("{:?}", properties.hfa());
-            eprintln!("{:#X?}", class);
-        }
-        Class {
+        let mut class = Class {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             kind: kind.into(),
@@ -226,7 +207,14 @@ impl From<FromClass<'_, '_>> for Class {
             derived_from,
             fields,
             size: size as usize,
+            forward_reference_for: None,
+        };
+
+        if let Some(forward_reference) = class.find_forward_reference(output_pdb) {
+            class.forward_reference_for = Some(forward_reference);
         }
+
+        class
     }
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -324,22 +312,60 @@ impl From<pdb::ClassKind> for ClassKind {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct Union {
+    name: String,
+    unique_name: Option<String>,
+    properties: TypeProperties,
+    size: usize,
+    count: usize,
+    fields: Vec<Rc<Type>>,
+    forward_reference_for: Option<Rc<Type>>,
+}
+impl Union {
+    pub fn find_forward_reference(
+        &self,
+        output_pdb: &crate::symbol_types::ParsedPdb,
+    ) -> Option<Rc<Type>> {
+        output_pdb.types.iter().find_map(|(_key, value)| {
+            if let Type::Union(union) = value.as_ref() {
+                if !union.properties.has_unique_name
+                    && !union.properties.forward_reference
+                    && union.unique_name == self.unique_name
+                {
+                    return Some(Rc::clone(value));
+                }
+            }
+
+            None
+        })
+    }
+}
+
+impl TypeSize for Union {
+    fn type_size(&self) -> usize {
+        if let Some(forward_ref) = self.forward_reference_for.as_ref() {
+            if let Type::Union(union) = forward_ref.as_ref() {
+                union.type_size();
+            } else {
+                panic!(
+                    "unexpected type returned for forward reference: {:?}",
+                    forward_ref
+                );
+            }
+        }
+
+        self.size
+    }
+}
 type FromUnion<'a, 'b> = (
     &'b pdb::UnionType<'a>,
     &'b pdb::TypeFinder<'a>,
     &'b mut crate::symbol_types::ParsedPdb,
 );
-#[derive(Debug, Serialize, Deserialize)]
-pub struct Union {
-    name: String,
-    unique_name: Option<String>,
-    size: usize,
-    count: usize,
-    fields: Vec<Rc<Type>>,
-}
 impl From<FromUnion<'_, '_>> for Union {
     fn from(data: FromUnion<'_, '_>) -> Self {
-        let (union, type_finder, parsed_pdb) = data;
+        let (union, type_finder, output_pdb) = data;
         let pdb::UnionType {
             count,
             properties,
@@ -349,7 +375,7 @@ impl From<FromUnion<'_, '_>> for Union {
             unique_name,
         } = union;
 
-        let fields = crate::parse::handle_type(*fields, parsed_pdb, type_finder)
+        let fields = crate::parse::handle_type(*fields, output_pdb, type_finder)
             .expect("failed to resolve dependent type");
 
         // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
@@ -366,20 +392,28 @@ impl From<FromUnion<'_, '_>> for Union {
             vec![]
         };
 
-        Union {
+        let mut union = Union {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
+            properties: (*properties).into(),
             size: *size as usize,
             count: *count as usize,
             fields,
+            forward_reference_for: None,
+        };
+
+        if let Some(forward_reference) = union.find_forward_reference(output_pdb) {
+            union.forward_reference_for = Some(forward_reference);
         }
+
+        union
     }
 }
 
 type FromBitfield<'a, 'b> = (
     &'b pdb::BitfieldType,
     &'b pdb::TypeFinder<'a>,
-    &'b HashMap<u32, Rc<Type>>,
+    &'b mut crate::symbol_types::ParsedPdb,
 );
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Bitfield {
@@ -389,17 +423,15 @@ pub struct Bitfield {
 }
 impl From<FromBitfield<'_, '_>> for Bitfield {
     fn from(data: FromBitfield<'_, '_>) -> Self {
-        let (bitfield, type_finder, parsed_types) = data;
+        let (bitfield, type_finder, output_pdb) = data;
         let pdb::BitfieldType {
             underlying_type,
             length,
             position,
         } = *bitfield;
 
-        let underlying_type = match parsed_types.get(&underlying_type.0) {
-            Some(typ) => Rc::clone(typ),
-            None => panic!("dependent type has not yet been parsed"),
-        };
+        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)
+            .expect("failed to parse dependent type");
 
         Bitfield {
             underlying_type,
@@ -758,7 +790,6 @@ pub struct Array {
     stride: Option<u32>,
     size: usize,
     dimensions_bytes: Vec<usize>,
-    dimensions_elements: Vec<usize>,
 }
 
 type FromArray<'a, 'b> = (
@@ -785,15 +816,6 @@ impl From<FromArray<'_, '_>> for Array {
             .expect("failed to parse dependent type");
         let size = *dimensions.last().unwrap() as usize;
         let mut last_element_size = element_type.type_size();
-        let mut dimensions_elements = vec![];
-        println!("{:?}", array);
-        println!("{:?}", dimensions);
-        for bytes in dimensions {
-            println!("{:#?}", element_type);
-            let elements = (*bytes as usize) / last_element_size;
-            dimensions_elements.push(elements);
-            last_element_size = *bytes as usize;
-        }
 
         Array {
             element_type,
@@ -801,7 +823,6 @@ impl From<FromArray<'_, '_>> for Array {
             stride: *stride,
             size,
             dimensions_bytes: dimensions.iter().map(|b| *b as usize).collect(),
-            dimensions_elements,
         }
     }
 }
