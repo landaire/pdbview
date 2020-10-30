@@ -139,7 +139,7 @@ impl From<FromClass<'_, '_>> for Class {
                 eprintln!("{:?}", b);
             }
             eprintln!("{:?}", properties.hfa());
-            panic!("{:?}", class);
+            panic!("{:#X?}", class);
         }
         Class {
             name: name.to_string().into_owned(),
