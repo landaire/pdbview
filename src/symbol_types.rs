@@ -2,10 +2,13 @@ use crate::type_info::Type;
 use log::warn;
 use pdb::FallibleIterator;
 use serde::Serialize;
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::convert::{From, TryFrom};
 use std::path::PathBuf;
 use std::rc::Rc;
+
+pub type TypeRef = Rc<RefCell<Type>>;
 
 /// Represents a PDB that has been fully parsed
 #[derive(Debug, Serialize)]
@@ -13,10 +16,12 @@ pub struct ParsedPdb {
     pub path: PathBuf,
     pub assembly_info: AssemblyInfo,
     pub public_symbols: Vec<PublicSymbol>,
-    pub types: HashMap<u32, Rc<Type>>,
+    pub types: HashMap<u32, TypeRef>,
     pub procedures: Vec<Procedure>,
     pub global_data: Vec<Data>,
     pub debug_modules: Vec<DebugModule>,
+    #[serde(skip_serializing)]
+    pub(crate) forward_references: Vec<Rc<Type>>,
 }
 
 impl ParsedPdb {
@@ -30,6 +35,7 @@ impl ParsedPdb {
             procedures: vec![],
             global_data: vec![],
             debug_modules: vec![],
+            forward_references: vec![],
         }
     }
 }

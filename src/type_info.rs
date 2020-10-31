@@ -1,11 +1,15 @@
+use crate::symbol_types::ParsedPdb;
+use crate::symbol_types::TypeRef;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use std::convert::From;
 use std::rc::Rc;
 
-trait TypeSize {
+pub trait Typed {
     /// Returns the size (in bytes) of this type
-    fn type_size(&self) -> usize;
+    fn type_size(&self, pdb: &ParsedPdb) -> usize;
+
+    /// Called after all types have been parsed
+    fn on_complete(&mut self, pdb: &ParsedPdb) {}
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,22 +39,22 @@ pub enum Type {
     VTable(VTable),
 }
 
-impl TypeSize for Type {
-    fn type_size(&self) -> usize {
+impl Typed for Type {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
         match self {
-            Type::Class(class) => class.type_size(),
-            Type::Union(union) => union.type_size(),
-            Type::Bitfield(bitfield) => bitfield.underlying_type.type_size(),
-            Type::Enumeration(e) => e.underlying_type.type_size(),
-            Type::Pointer(p) => p.attributes.kind.type_size(),
-            Type::Primitive(p) => p.type_size(),
-            Type::Array(a) => a.size,
+            Type::Class(class) => class.type_size(pdb),
+            Type::Union(union) => union.type_size(pdb),
+            Type::Bitfield(bitfield) => bitfield.underlying_type.borrow().type_size(pdb),
+            Type::Enumeration(e) => e.underlying_type.borrow().type_size(pdb),
+            Type::Pointer(p) => p.attributes.kind.type_size(pdb),
+            Type::Primitive(p) => p.type_size(pdb),
+            Type::Array(a) => a.type_size(pdb),
             Type::FieldList(fields) => fields
                 .0
                 .iter()
-                .fold(0, |acc, field| acc + field.type_size()),
+                .fold(0, |acc, field| acc + field.borrow().type_size(pdb)),
             Type::EnumVariant(_) => panic!("type_size() invoked for EnumVariant"),
-            Type::Modifier(modifier) => modifier.underlying_type.type_size(),
+            Type::Modifier(modifier) => modifier.underlying_type.borrow().type_size(pdb),
             Type::Member(_) => panic!("type_size() invoked for Member"),
             Type::ArgumentList(_) => panic!("type_size() invoked for ArgumentList"),
             Type::Procedure(_) => panic!("type_size() invoked for Procedure"),
@@ -66,24 +70,33 @@ impl TypeSize for Type {
             Type::BaseClass(_) => panic!("type_size() invoked for BaseClass"),
         }
     }
+
+    fn on_complete(&mut self, pdb: &ParsedPdb) {
+        match self {
+            Type::Class(class) => class.on_complete(pdb),
+            Type::Union(union) => union.on_complete(pdb),
+            Type::Array(a) => a.on_complete(pdb),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TypeProperties {
-    packed: bool,
-    constructors: bool,
-    overlapped_operators: bool,
-    is_nested_type: bool,
-    contains_nested_types: bool,
-    overload_assignment: bool,
-    overload_coasting: bool,
-    forward_reference: bool,
-    scoped_definition: bool,
-    has_unique_name: bool,
-    sealed: bool,
-    hfa: u8,
-    intristic_type: bool,
-    mocom: u8,
+    pub packed: bool,
+    pub constructors: bool,
+    pub overlapped_operators: bool,
+    pub is_nested_type: bool,
+    pub contains_nested_types: bool,
+    pub overload_assignment: bool,
+    pub overload_coasting: bool,
+    pub forward_reference: bool,
+    pub scoped_definition: bool,
+    pub has_unique_name: bool,
+    pub sealed: bool,
+    pub hfa: u8,
+    pub intristic_type: bool,
+    pub mocom: u8,
 }
 
 impl From<pdb::TypeProperties> for TypeProperties {
@@ -113,44 +126,27 @@ pub struct Class {
     pub unique_name: Option<String>,
     pub kind: ClassKind,
     pub properties: TypeProperties,
-    pub derived_from: Option<Rc<Type>>,
-    pub fields: Vec<Rc<Type>>,
+    pub derived_from: Option<TypeRef>,
+    pub fields: Vec<TypeRef>,
     pub size: usize,
-    pub forward_reference_for: Option<Rc<Type>>,
 }
 
-impl Class {
-    pub fn find_forward_reference(
-        &self,
-        output_pdb: &crate::symbol_types::ParsedPdb,
-    ) -> Option<Rc<Type>> {
-        if !self.properties.forward_reference {
-            return None;
-        }
-
-        output_pdb.types.iter().find_map(|(_key, value)| {
-            if let Type::Class(class) = value.as_ref() {
-                if !class.properties.forward_reference && class.unique_name == self.unique_name {
-                    return Some(Rc::clone(value));
+impl Typed for Class {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        if self.properties.forward_reference {
+            // Find the implementation
+            for (_key, value) in &pdb.types {
+                if let Some(borrow) = value.as_ref().try_borrow().ok() {
+                    if let Type::Class(class) = &*borrow {
+                        if !class.properties.forward_reference
+                            && class.unique_name == self.unique_name
+                        {
+                            return class.type_size(pdb);
+                        }
+                    }
                 }
             }
-
-            None
-        })
-    }
-}
-
-impl TypeSize for Class {
-    fn type_size(&self) -> usize {
-        if let Some(forward_ref) = self.forward_reference_for.as_ref() {
-            if let Type::Class(class) = forward_ref.as_ref() {
-                class.type_size();
-            } else {
-                panic!(
-                    "unexpected type returned for forward reference: {:?}",
-                    forward_ref
-                );
-            }
+            println!("could not get forward reference for {}", self.name);
         }
 
         self.size
@@ -179,13 +175,14 @@ impl From<FromClass<'_, '_>> for Class {
             unique_name,
         } = *class;
 
-        let fields: Vec<Rc<Type>> = fields
+        let fields: Vec<TypeRef> = fields
             .map(|type_index| {
-                // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
+                // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
                 if let Type::FieldList(fields) =
-                    crate::parse::handle_type(type_index, output_pdb, type_finder)
+                    &*crate::parse::handle_type(type_index, output_pdb, type_finder)
                         .expect("failed to resolve dependent type")
                         .as_ref()
+                        .borrow()
                 {
                     fields.0.clone()
                 } else {
@@ -199,28 +196,23 @@ impl From<FromClass<'_, '_>> for Class {
                 .expect("failed to resolve dependent type")
         });
 
-        let mut class = Class {
+        let unique_name = unique_name.map(|s| s.to_string().into_owned());
+
+        Class {
             name: name.to_string().into_owned(),
-            unique_name: unique_name.map(|s| s.to_string().into_owned()),
+            unique_name,
             kind: kind.into(),
             properties: properties.into(),
             derived_from,
             fields,
             size: size as usize,
-            forward_reference_for: None,
-        };
-
-        if let Some(forward_reference) = class.find_forward_reference(output_pdb) {
-            class.forward_reference_for = Some(forward_reference);
         }
-
-        class
     }
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BaseClass {
     kind: ClassKind,
-    base_class: Rc<Type>,
+    base_class: TypeRef,
     offset: usize,
 }
 
@@ -255,8 +247,8 @@ impl From<FromBaseClass<'_, '_>> for BaseClass {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct VirtualBaseClass {
     direct: bool,
-    base_class: Rc<Type>,
-    base_pointer: Rc<Type>,
+    base_class: TypeRef,
+    base_pointer: TypeRef,
     base_pointer_offset: usize,
     virtual_base_offset: usize,
 }
@@ -314,47 +306,29 @@ impl From<pdb::ClassKind> for ClassKind {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Union {
-    name: String,
-    unique_name: Option<String>,
-    properties: TypeProperties,
-    size: usize,
-    count: usize,
-    fields: Vec<Rc<Type>>,
-    forward_reference_for: Option<Rc<Type>>,
+    pub name: String,
+    pub unique_name: Option<String>,
+    pub properties: TypeProperties,
+    pub size: usize,
+    pub count: usize,
+    pub fields: Vec<TypeRef>,
 }
-impl Union {
-    pub fn find_forward_reference(
-        &self,
-        output_pdb: &crate::symbol_types::ParsedPdb,
-    ) -> Option<Rc<Type>> {
-        output_pdb.types.iter().find_map(|(_key, value)| {
-            if let Type::Union(union) = value.as_ref() {
-                if !union.properties.has_unique_name
-                    && !union.properties.forward_reference
-                    && union.unique_name == self.unique_name
-                {
-                    return Some(Rc::clone(value));
+
+impl Typed for Union {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        if self.properties.forward_reference {
+            // Find the implementation
+            for (_key, value) in &pdb.types {
+                if let Type::Union(union) = &*value.as_ref().borrow() {
+                    if !union.properties.forward_reference && union.unique_name == self.unique_name
+                    {
+                        return union.type_size(pdb);
+                    }
                 }
             }
 
-            None
-        })
-    }
-}
-
-impl TypeSize for Union {
-    fn type_size(&self) -> usize {
-        if let Some(forward_ref) = self.forward_reference_for.as_ref() {
-            if let Type::Union(union) = forward_ref.as_ref() {
-                union.type_size();
-            } else {
-                panic!(
-                    "unexpected type returned for forward reference: {:?}",
-                    forward_ref
-                );
-            }
+            println!("could not get forward reference for {}", self.name);
         }
-
         self.size
     }
 }
@@ -378,9 +352,9 @@ impl From<FromUnion<'_, '_>> for Union {
         let fields = crate::parse::handle_type(*fields, output_pdb, type_finder)
             .expect("failed to resolve dependent type");
 
-        // TODO: perhaps change FieldList to Rc<Vec<Rc<Type>>?
+        // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
         let fields = if *count > 0 {
-            if let Type::FieldList(fields) = fields.as_ref() {
+            if let Type::FieldList(fields) = &*fields.as_ref().borrow() {
                 fields.0.clone()
             } else {
                 panic!(
@@ -399,12 +373,7 @@ impl From<FromUnion<'_, '_>> for Union {
             size: *size as usize,
             count: *count as usize,
             fields,
-            forward_reference_for: None,
         };
-
-        if let Some(forward_reference) = union.find_forward_reference(output_pdb) {
-            union.forward_reference_for = Some(forward_reference);
-        }
 
         union
     }
@@ -417,7 +386,7 @@ type FromBitfield<'a, 'b> = (
 );
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Bitfield {
-    underlying_type: Rc<Type>,
+    underlying_type: TypeRef,
     len: usize,
     position: usize,
 }
@@ -445,7 +414,7 @@ impl From<FromBitfield<'_, '_>> for Bitfield {
 pub struct Enumeration {
     name: String,
     unique_name: Option<String>,
-    underlying_type: Rc<Type>,
+    underlying_type: TypeRef,
     variants: Vec<EnumVariant>,
 }
 
@@ -540,7 +509,7 @@ impl From<&FromVariant> for VariantValue {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Pointer {
     // TODO: we don't know the width of the pointer
-    underlying_type: Option<Rc<Type>>,
+    underlying_type: Option<TypeRef>,
     attributes: PointerAttributes,
 }
 
@@ -605,8 +574,8 @@ impl From<pdb::PointerKind> for PointerKind {
     }
 }
 
-impl TypeSize for PointerKind {
-    fn type_size(&self) -> usize {
+impl Typed for PointerKind {
+    fn type_size(&self, _pdb: &ParsedPdb) -> usize {
         match self {
             PointerKind::Near16 | PointerKind::Far16 | PointerKind::Huge16 => 2,
             PointerKind::Near32 | PointerKind::Far32 => 4,
@@ -644,7 +613,70 @@ impl From<pdb::PointerAttributes> for PointerAttributes {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub enum Primitive {
+pub struct Primitive {
+    pub kind: PrimitiveKind,
+    pub indirection: Option<Indirection>,
+}
+
+impl From<&pdb::PrimitiveType> for Primitive {
+    fn from(typ: &pdb::PrimitiveType) -> Self {
+        let pdb::PrimitiveType { kind, indirection } = typ;
+
+        Primitive {
+            kind: kind.into(),
+            indirection: indirection.map(|i| i.into()),
+        }
+    }
+}
+
+impl Typed for Primitive {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        if let Some(indirection) = self.indirection.as_ref() {
+            return indirection.type_size(pdb);
+        }
+
+        return self.kind.type_size(pdb);
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum Indirection {
+    Near16,
+    Far16,
+    Huge16,
+    Near32,
+    Far32,
+    Near64,
+    Near128,
+}
+
+impl From<pdb::Indirection> for Indirection {
+    fn from(kind: pdb::Indirection) -> Self {
+        match kind {
+            pdb::Indirection::Near16 => Indirection::Near16,
+            pdb::Indirection::Far16 => Indirection::Far16,
+            pdb::Indirection::Huge16 => Indirection::Huge16,
+            pdb::Indirection::Near32 => Indirection::Near32,
+            pdb::Indirection::Far32 => Indirection::Far32,
+            pdb::Indirection::Near64 => Indirection::Near64,
+            pdb::Indirection::Near128 => Indirection::Near128,
+        }
+    }
+}
+
+impl Typed for Indirection {
+    fn type_size(&self, _pdb: &ParsedPdb) -> usize {
+        match self {
+            Indirection::Near16 | Indirection::Far16 | Indirection::Huge16 => 2,
+            Indirection::Near32 | Indirection::Far32 => 4,
+            Indirection::Near64 => 8,
+            Indirection::Near128 => 8,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub enum PrimitiveKind {
     NoType,
     Void,
     Char,
@@ -689,95 +721,96 @@ pub enum Primitive {
     HRESULT,
 }
 
-impl From<&pdb::PrimitiveType> for Primitive {
-    fn from(typ: &pdb::PrimitiveType) -> Self {
-        let pdb::PrimitiveType { kind, indirection } = typ;
-
+impl From<&pdb::PrimitiveKind> for PrimitiveKind {
+    fn from(kind: &pdb::PrimitiveKind) -> Self {
         match *kind {
-            pdb::PrimitiveKind::NoType => Primitive::NoType,
-            pdb::PrimitiveKind::Void => Primitive::Void,
-            pdb::PrimitiveKind::Char => Primitive::Char,
-            pdb::PrimitiveKind::UChar => Primitive::UChar,
-            pdb::PrimitiveKind::RChar => Primitive::RChar,
-            pdb::PrimitiveKind::WChar => Primitive::WChar,
-            pdb::PrimitiveKind::RChar16 => Primitive::RChar16,
-            pdb::PrimitiveKind::RChar32 => Primitive::RChar32,
-            pdb::PrimitiveKind::I8 => Primitive::I8,
-            pdb::PrimitiveKind::U8 => Primitive::U8,
-            pdb::PrimitiveKind::Short => Primitive::Short,
-            pdb::PrimitiveKind::UShort => Primitive::UShort,
-            pdb::PrimitiveKind::I16 => Primitive::I16,
-            pdb::PrimitiveKind::U16 => Primitive::U16,
-            pdb::PrimitiveKind::Long => Primitive::Long,
-            pdb::PrimitiveKind::ULong => Primitive::ULong,
-            pdb::PrimitiveKind::I32 => Primitive::I32,
-            pdb::PrimitiveKind::U32 => Primitive::U32,
-            pdb::PrimitiveKind::Quad => Primitive::Quad,
-            pdb::PrimitiveKind::UQuad => Primitive::UQuad,
-            pdb::PrimitiveKind::I64 => Primitive::I64,
-            pdb::PrimitiveKind::U64 => Primitive::U64,
-            pdb::PrimitiveKind::Octa => Primitive::Octa,
-            pdb::PrimitiveKind::UOcta => Primitive::UOcta,
-            pdb::PrimitiveKind::I128 => Primitive::I128,
-            pdb::PrimitiveKind::U128 => Primitive::U128,
-            pdb::PrimitiveKind::F16 => Primitive::F16,
-            pdb::PrimitiveKind::F32 => Primitive::F32,
-            pdb::PrimitiveKind::F32PP => Primitive::F32PP,
-            pdb::PrimitiveKind::F48 => Primitive::F48,
-            pdb::PrimitiveKind::F64 => Primitive::F64,
-            pdb::PrimitiveKind::F80 => Primitive::F80,
-            pdb::PrimitiveKind::F128 => Primitive::F128,
-            pdb::PrimitiveKind::Complex32 => Primitive::Complex32,
-            pdb::PrimitiveKind::Complex64 => Primitive::Complex64,
-            pdb::PrimitiveKind::Complex80 => Primitive::Complex80,
-            pdb::PrimitiveKind::Complex128 => Primitive::Complex128,
-            pdb::PrimitiveKind::Bool8 => Primitive::Bool8,
-            pdb::PrimitiveKind::Bool16 => Primitive::Bool16,
-            pdb::PrimitiveKind::Bool32 => Primitive::Bool32,
-            pdb::PrimitiveKind::Bool64 => Primitive::Bool64,
-            pdb::PrimitiveKind::HRESULT => Primitive::HRESULT,
+            pdb::PrimitiveKind::NoType => PrimitiveKind::NoType,
+            pdb::PrimitiveKind::Void => PrimitiveKind::Void,
+            pdb::PrimitiveKind::Char => PrimitiveKind::Char,
+            pdb::PrimitiveKind::UChar => PrimitiveKind::UChar,
+            pdb::PrimitiveKind::RChar => PrimitiveKind::RChar,
+            pdb::PrimitiveKind::WChar => PrimitiveKind::WChar,
+            pdb::PrimitiveKind::RChar16 => PrimitiveKind::RChar16,
+            pdb::PrimitiveKind::RChar32 => PrimitiveKind::RChar32,
+            pdb::PrimitiveKind::I8 => PrimitiveKind::I8,
+            pdb::PrimitiveKind::U8 => PrimitiveKind::U8,
+            pdb::PrimitiveKind::Short => PrimitiveKind::Short,
+            pdb::PrimitiveKind::UShort => PrimitiveKind::UShort,
+            pdb::PrimitiveKind::I16 => PrimitiveKind::I16,
+            pdb::PrimitiveKind::U16 => PrimitiveKind::U16,
+            pdb::PrimitiveKind::Long => PrimitiveKind::Long,
+            pdb::PrimitiveKind::ULong => PrimitiveKind::ULong,
+            pdb::PrimitiveKind::I32 => PrimitiveKind::I32,
+            pdb::PrimitiveKind::U32 => PrimitiveKind::U32,
+            pdb::PrimitiveKind::Quad => PrimitiveKind::Quad,
+            pdb::PrimitiveKind::UQuad => PrimitiveKind::UQuad,
+            pdb::PrimitiveKind::I64 => PrimitiveKind::I64,
+            pdb::PrimitiveKind::U64 => PrimitiveKind::U64,
+            pdb::PrimitiveKind::Octa => PrimitiveKind::Octa,
+            pdb::PrimitiveKind::UOcta => PrimitiveKind::UOcta,
+            pdb::PrimitiveKind::I128 => PrimitiveKind::I128,
+            pdb::PrimitiveKind::U128 => PrimitiveKind::U128,
+            pdb::PrimitiveKind::F16 => PrimitiveKind::F16,
+            pdb::PrimitiveKind::F32 => PrimitiveKind::F32,
+            pdb::PrimitiveKind::F32PP => PrimitiveKind::F32PP,
+            pdb::PrimitiveKind::F48 => PrimitiveKind::F48,
+            pdb::PrimitiveKind::F64 => PrimitiveKind::F64,
+            pdb::PrimitiveKind::F80 => PrimitiveKind::F80,
+            pdb::PrimitiveKind::F128 => PrimitiveKind::F128,
+            pdb::PrimitiveKind::Complex32 => PrimitiveKind::Complex32,
+            pdb::PrimitiveKind::Complex64 => PrimitiveKind::Complex64,
+            pdb::PrimitiveKind::Complex80 => PrimitiveKind::Complex80,
+            pdb::PrimitiveKind::Complex128 => PrimitiveKind::Complex128,
+            pdb::PrimitiveKind::Bool8 => PrimitiveKind::Bool8,
+            pdb::PrimitiveKind::Bool16 => PrimitiveKind::Bool16,
+            pdb::PrimitiveKind::Bool32 => PrimitiveKind::Bool32,
+            pdb::PrimitiveKind::Bool64 => PrimitiveKind::Bool64,
+            pdb::PrimitiveKind::HRESULT => PrimitiveKind::HRESULT,
         }
     }
 }
 
-impl TypeSize for Primitive {
-    fn type_size(&self) -> usize {
+impl Typed for PrimitiveKind {
+    fn type_size(&self, _pdb: &ParsedPdb) -> usize {
         match self {
-            Primitive::NoType | Primitive::Void => 0,
+            PrimitiveKind::NoType | PrimitiveKind::Void => 0,
 
-            Primitive::Char
-            | Primitive::UChar
-            | Primitive::RChar
-            | Primitive::I8
-            | Primitive::U8
-            | Primitive::Bool8 => 1,
+            PrimitiveKind::Char
+            | PrimitiveKind::UChar
+            | PrimitiveKind::RChar
+            | PrimitiveKind::I8
+            | PrimitiveKind::U8
+            | PrimitiveKind::Bool8 => 1,
 
-            Primitive::RChar16
-            | Primitive::WChar
-            | Primitive::Short
-            | Primitive::UShort
-            | Primitive::I16
-            | Primitive::U16
-            | Primitive::F16
-            | Primitive::Bool16 => 2,
+            PrimitiveKind::RChar16
+            | PrimitiveKind::WChar
+            | PrimitiveKind::Short
+            | PrimitiveKind::UShort
+            | PrimitiveKind::I16
+            | PrimitiveKind::U16
+            | PrimitiveKind::F16
+            | PrimitiveKind::Bool16 => 2,
 
-            Primitive::RChar32
-            | Primitive::Long
-            | Primitive::ULong
-            | Primitive::I32
-            | Primitive::U32
-            | Primitive::F32
-            | Primitive::F32PP
-            | Primitive::Bool32
-            | Primitive::HRESULT => 4,
+            PrimitiveKind::RChar32
+            | PrimitiveKind::Long
+            | PrimitiveKind::ULong
+            | PrimitiveKind::I32
+            | PrimitiveKind::U32
+            | PrimitiveKind::F32
+            | PrimitiveKind::F32PP
+            | PrimitiveKind::Bool32
+            | PrimitiveKind::HRESULT => 4,
 
-            Primitive::Quad
-            | Primitive::UQuad
-            | Primitive::I64
-            | Primitive::U64
-            | Primitive::F64
-            | Primitive::Bool64 => 8,
-            Primitive::Octa | Primitive::UOcta | Primitive::I128 | Primitive::U128 => 16,
+            PrimitiveKind::Quad
+            | PrimitiveKind::UQuad
+            | PrimitiveKind::I64
+            | PrimitiveKind::U64
+            | PrimitiveKind::F64
+            | PrimitiveKind::Bool64 => 8,
+            PrimitiveKind::Octa
+            | PrimitiveKind::UOcta
+            | PrimitiveKind::I128
+            | PrimitiveKind::U128 => 16,
             _ => panic!("type size not handled for type: {:?}", self),
         }
     }
@@ -785,11 +818,36 @@ impl TypeSize for Primitive {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Array {
-    element_type: Rc<Type>,
-    indexing_type: Rc<Type>,
+    element_type: TypeRef,
+    indexing_type: TypeRef,
     stride: Option<u32>,
     size: usize,
     dimensions_bytes: Vec<usize>,
+    dimensions_elements: Vec<usize>,
+}
+
+impl Typed for Array {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        self.size
+    }
+
+    fn on_complete(&mut self, pdb: &ParsedPdb) {
+        self.dimensions_elements.clear();
+
+        if self.size == 0 {
+            self.dimensions_elements.push(0);
+            return;
+        }
+
+        let mut running_size = self.element_type.as_ref().borrow().type_size(pdb);
+
+        for byte_size in &self.dimensions_bytes {
+            let size = *byte_size / running_size;
+            self.dimensions_elements.push(size);
+
+            running_size = size;
+        }
+    }
 }
 
 type FromArray<'a, 'b> = (
@@ -815,7 +873,6 @@ impl From<FromArray<'_, '_>> for Array {
         let indexing_type = crate::parse::handle_type(*indexing_type, output_pdb, type_finder)
             .expect("failed to parse dependent type");
         let size = *dimensions.last().unwrap() as usize;
-        let mut last_element_size = element_type.type_size();
 
         Array {
             element_type,
@@ -823,12 +880,13 @@ impl From<FromArray<'_, '_>> for Array {
             stride: *stride,
             size,
             dimensions_bytes: dimensions.iter().map(|b| *b as usize).collect(),
+            dimensions_elements: Vec::with_capacity(dimensions.len()),
         }
     }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct FieldList(Vec<Rc<Type>>);
+pub struct FieldList(Vec<TypeRef>);
 
 type FromFieldList<'a, 'b> = (
     &'b pdb::FieldList<'b>,
@@ -845,7 +903,7 @@ impl From<FromFieldList<'_, '_>> for FieldList {
             continuation,
         } = fields;
 
-        let mut result_fields: Vec<Rc<Type>> = fields
+        let mut result_fields: Vec<TypeRef> = fields
             .iter()
             .map(|typ| {
                 crate::parse::handle_type_data(typ, output_pdb, type_finder)
@@ -857,7 +915,8 @@ impl From<FromFieldList<'_, '_>> for FieldList {
         if let Some(continuation) = continuation {
             let field = crate::parse::handle_type(*continuation, output_pdb, type_finder)
                 .expect("failed to parse dependent type");
-            if let Type::FieldList(fields) = field.as_ref() {
+            let field = field.as_ref().borrow();
+            if let Type::FieldList(fields) = &*field {
                 result_fields.append(&mut fields.0.clone())
             } else {
                 panic!(
@@ -872,7 +931,7 @@ impl From<FromFieldList<'_, '_>> for FieldList {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ArgumentList(Vec<Rc<Type>>);
+pub struct ArgumentList(Vec<TypeRef>);
 
 type FromArgumentList<'a, 'b> = (
     &'b pdb::ArgumentList,
@@ -886,7 +945,7 @@ impl From<FromArgumentList<'_, '_>> for ArgumentList {
 
         let pdb::ArgumentList { arguments } = arguments;
 
-        let arguments: Vec<Rc<Type>> = arguments
+        let arguments: Vec<TypeRef> = arguments
             .iter()
             .map(|typ| {
                 crate::parse::handle_type(*typ, output_pdb, type_finder)
@@ -901,7 +960,7 @@ impl From<FromArgumentList<'_, '_>> for ArgumentList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Modifier {
-    underlying_type: Rc<Type>,
+    underlying_type: TypeRef,
     constant: bool,
     volatile: bool,
     unaligned: bool,
@@ -939,7 +998,7 @@ impl From<FromModifier<'_, '_>> for Modifier {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Member {
     name: String,
-    underlying_type: Rc<Type>,
+    underlying_type: TypeRef,
     offset: usize,
 }
 
@@ -973,8 +1032,8 @@ impl From<FromMember<'_, '_>> for Member {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Procedure {
-    return_type: Option<Rc<Type>>,
-    argument_list: Vec<Rc<Type>>,
+    return_type: Option<TypeRef>,
+    argument_list: Vec<TypeRef>,
 }
 
 type FromProcedure<'a, 'b> = (
@@ -999,10 +1058,10 @@ impl From<FromProcedure<'_, '_>> for Procedure {
                 .expect("failed to parse dependent type")
         });
 
-        let arguments: Vec<Rc<Type>>;
+        let arguments: Vec<TypeRef>;
         let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
             .expect("failed to parse dependent type");
-        if let Type::ArgumentList(argument_list) = field.as_ref() {
+        if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
             panic!(
@@ -1019,10 +1078,10 @@ impl From<FromProcedure<'_, '_>> for Procedure {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MemberFunction {
-    return_type: Rc<Type>,
-    class_type: Rc<Type>,
-    this_pointer_type: Option<Rc<Type>>,
-    argument_list: Vec<Rc<Type>>,
+    return_type: TypeRef,
+    class_type: TypeRef,
+    this_pointer_type: Option<TypeRef>,
+    argument_list: Vec<TypeRef>,
 }
 
 type FromMemberFunction<'a, 'b> = (
@@ -1056,10 +1115,10 @@ impl From<FromMemberFunction<'_, '_>> for MemberFunction {
                 .expect("failed to parse dependent type")
         });
 
-        let arguments: Vec<Rc<Type>>;
+        let arguments: Vec<TypeRef>;
         let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
             .expect("failed to parse dependent type");
-        if let Type::ArgumentList(argument_list) = field.as_ref() {
+        if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
             panic!(
@@ -1102,7 +1161,7 @@ impl From<FromMethodList<'_, '_>> for MethodList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct MethodListEntry {
-    method_type: Rc<Type>,
+    method_type: TypeRef,
     vtable_offset: Option<usize>,
 }
 
@@ -1135,7 +1194,7 @@ impl From<FromMethodListEntry<'_, '_>> for MethodListEntry {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Nested {
     name: String,
-    nested_type: Rc<Type>,
+    nested_type: TypeRef,
 }
 
 type FromNested<'a, 'b> = (
@@ -1167,7 +1226,7 @@ impl From<FromNested<'_, '_>> for Nested {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct OverloadedMethod {
     name: String,
-    method_list: Rc<Type>,
+    method_list: TypeRef,
 }
 
 type FromOverloadedMethod<'a, 'b> = (
@@ -1199,7 +1258,7 @@ impl From<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Method {
     name: String,
-    method_type: Rc<Type>,
+    method_type: TypeRef,
     vtable_offset: Option<usize>,
 }
 
@@ -1234,7 +1293,7 @@ impl From<FromMethod<'_, '_>> for Method {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct StaticMember {
     name: String,
-    field_type: Rc<Type>,
+    field_type: TypeRef,
 }
 
 type FromStaticMember<'a, 'b> = (
@@ -1264,7 +1323,7 @@ impl From<FromStaticMember<'_, '_>> for StaticMember {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VTable(Rc<Type>);
+pub struct VTable(TypeRef);
 type FromVirtualFunctionTablePointer<'a, 'b> = (
     &'b pdb::VirtualFunctionTablePointerType,
     &'b pdb::TypeFinder<'a>,

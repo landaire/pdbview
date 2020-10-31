@@ -3,6 +3,7 @@ use crate::symbol_types::*;
 use anyhow::Result;
 use log::{debug, warn};
 use pdb::*;
+use std::cell::RefCell;
 use std::convert::TryInto;
 use std::fs::File;
 use std::path::Path;
@@ -61,7 +62,18 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
             }
             Err(e) => return Err(e.into()),
         };
-        println!("{:#?}", typ);
+    }
+
+    // Iterate through all of the parsed types once just to update any necessary info
+    for typ in output_pdb.types.values() {
+        use crate::type_info::Typed;
+
+        typ.as_ref().borrow_mut().on_complete(&output_pdb);
+    }
+
+    // Iterate through all of the parsed types once just to update any necessary info
+    for typ in output_pdb.types.values() {
+        println!("{:#?}", typ.as_ref().borrow());
     }
 
     debug!("grabbing public symbols");
@@ -169,18 +181,18 @@ pub fn handle_type(
     idx: pdb::TypeIndex,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
-) -> Result<Rc<crate::type_info::Type>, ParsingError> {
+) -> Result<TypeRef, ParsingError> {
+    use crate::type_info::{Class, Type, Union};
     let typ = type_finder.find(idx).expect("failed to resolve type");
-    if idx.0 == 0x1145 {
-        eprintln!("{:#?}", typ.parse()?);
-    }
     if let Some(typ) = output_pdb.types.get(&idx.0) {
         return Ok(Rc::clone(typ));
     }
 
     let typ = type_finder.find(idx).expect("failed to resolve type");
 
-    let typ = handle_type_data(&typ.parse()?, output_pdb, type_finder)?;
+    let parsed_type = &typ.parse()?;
+    let typ = handle_type_data(parsed_type, output_pdb, type_finder)?;
+
     output_pdb.types.insert(idx.0, Rc::clone(&typ));
 
     Ok(typ)
@@ -190,12 +202,12 @@ pub fn handle_type_data(
     typ: &pdb::TypeData,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
-) -> Result<Rc<crate::type_info::Type>, ParsingError> {
-    use crate::type_info::Type;
+) -> Result<TypeRef, ParsingError> {
+    use crate::type_info::{Class, Type};
     let typ = match typ {
         TypeData::Class(data) => {
-            let class = (data, type_finder, output_pdb).into();
-            Type::Class(class)
+            let typ = (data, type_finder, output_pdb).into();
+            Type::Class(typ)
         }
         TypeData::Union(data) => {
             let typ = (data, type_finder, output_pdb).into();
@@ -287,5 +299,5 @@ pub fn handle_type_data(
         }
     };
 
-    Ok(Rc::new(typ))
+    Ok(Rc::new(RefCell::new(typ)))
 }
