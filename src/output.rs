@@ -1,4 +1,6 @@
 use crate::symbol_types::ParsedPdb;
+use crate::type_info::Type;
+use log::{debug, warn};
 use std::io::{self, Write};
 
 pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<()> {
@@ -194,7 +196,126 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
         writeln!(output, "{}", procedure.name)?;
     }
 
+    writeln!(output, "Types:")?;
+
+    let width = 20usize;
+    for ty in pdb_info.types.values() {
+        use crate::type_info::*;
+
+        let ty: &Type = &*ty.as_ref().borrow();
+        match ty {
+            Type::Class(class) => {
+                if class.properties.forward_reference {
+                    continue;
+                }
+
+                writeln!(
+                    output,
+                    "\t\t{:width$} {} {}",
+                    class.kind,
+                    class.name,
+                    class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
+                    width = 10
+                )?;
+                // writeln!(
+                //     output,
+                //     "\t\t{:width$} {}",
+                //     "Name:",
+                //     class.name,
+                //     width = width
+                // )?;
+                // writeln!(
+                //     output,
+                //     "\t\t{:width$} {}",
+                //     "Unique name:",
+                //     class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
+                //     width = width
+                // )?;
+                writeln!(output, "\t\tFields:")?;
+                for field in &class.fields {
+                    let field: &Type = &*field.as_ref().borrow();
+
+                    match field {
+                        Type::Member(member) => {
+                            let member_ty: &Type = &*member.underlying_type.as_ref().borrow();
+                            writeln!(
+                                output,
+                                "\t\t\t0x{:X} {:width$} {}",
+                                member.offset,
+                                member.name,
+                                format_type_name(member_ty),
+                                width = width
+                            )?;
+                        }
+                        Type::BaseClass(base) => {
+                            writeln!(
+                                output,
+                                "\t\t\t0x{:X} <BaseClass>  {}",
+                                base.offset,
+                                format_type_name(&*base.base_class.as_ref().borrow())
+                            )?;
+                        }
+                        other => debug!("Unexpected field type present in class: {:?}", other),
+                    }
+                }
+            }
+            Type::Union(union) => {}
+            _ => {
+                continue;
+            }
+        }
+        writeln!(output);
+    }
+
     Ok(())
+}
+
+fn format_type_name(ty: &Type) -> String {
+    match ty {
+        Type::Class(class) => class.name.clone(),
+        Type::Union(union) => union.name.clone(),
+        Type::Array(array) => format!(
+            "{}{}",
+            format_type_name(&*array.element_type.as_ref().borrow()),
+            array
+                .dimensions_elements
+                .iter()
+                .fold(String::new(), |accum, dimension| format!(
+                    "{}[0x{:X}]",
+                    accum, dimension
+                ))
+        ),
+        Type::Pointer(pointer) => {
+            // TODO: Attributes
+            format!(
+                "{}*",
+                format_type_name(&*pointer.underlying_type.as_ref().unwrap().as_ref().borrow())
+            )
+        }
+        Type::Primitive(primitive) => format!("{}", primitive.kind),
+        Type::Modifier(modifier) => format_type_name(&*modifier.underlying_type.as_ref().borrow()),
+        Type::Bitfield(bitfield) => format!(
+            "{}:{}",
+            format_type_name(&*bitfield.underlying_type.as_ref().borrow()),
+            bitfield.len
+        ),
+        Type::Procedure(proc) => format!(
+            "{} (*function){}",
+            format_type_name(&*proc.return_type.as_ref().unwrap().as_ref().borrow()),
+            proc.argument_list
+                .iter()
+                .fold(String::new(), |accum, argument| {
+                    format!(
+                        "{}{}{}",
+                        &accum,
+                        if accum.is_empty() { "" } else { "," },
+                        format_type_name(&*argument.as_ref().borrow())
+                    )
+                })
+        ),
+        Type::Enumeration(e) => e.name.clone(),
+        other => panic!("unimplemented type format: {:?}", other),
+    }
 }
 
 pub fn print_json(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<()> {

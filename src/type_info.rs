@@ -211,9 +211,9 @@ impl From<FromClass<'_, '_>> for Class {
 }
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BaseClass {
-    kind: ClassKind,
-    base_class: TypeRef,
-    offset: usize,
+    pub kind: ClassKind,
+    pub base_class: TypeRef,
+    pub offset: usize,
 }
 
 type FromBaseClass<'a, 'b> = (
@@ -304,6 +304,16 @@ impl From<pdb::ClassKind> for ClassKind {
     }
 }
 
+impl std::fmt::Display for ClassKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ClassKind::Class => write!(f, "Class"),
+            ClassKind::Struct => write!(f, "Struct"),
+            ClassKind::Interface => write!(f, "Interface"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Union {
     pub name: String,
@@ -321,7 +331,8 @@ impl Typed for Union {
             for (_key, value) in &pdb.types {
                 if let Some(value) = value.as_ref().try_borrow().ok() {
                     if let Type::Union(union) = &*value {
-                        if !union.properties.forward_reference && union.unique_name == self.unique_name
+                        if !union.properties.forward_reference
+                            && union.unique_name == self.unique_name
                         {
                             return union.type_size(pdb);
                         }
@@ -388,9 +399,9 @@ type FromBitfield<'a, 'b> = (
 );
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Bitfield {
-    underlying_type: TypeRef,
-    len: usize,
-    position: usize,
+    pub underlying_type: TypeRef,
+    pub len: usize,
+    pub position: usize,
 }
 impl From<FromBitfield<'_, '_>> for Bitfield {
     fn from(data: FromBitfield<'_, '_>) -> Self {
@@ -412,12 +423,18 @@ impl From<FromBitfield<'_, '_>> for Bitfield {
     }
 }
 
+impl Typed for Bitfield {
+    fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        panic!("calling type_size() directly on a bitfield is probably not what you want");
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Enumeration {
-    name: String,
-    unique_name: Option<String>,
-    underlying_type: TypeRef,
-    variants: Vec<EnumVariant>,
+    pub name: String,
+    pub unique_name: Option<String>,
+    pub underlying_type: TypeRef,
+    pub variants: Vec<EnumVariant>,
 }
 
 type FromEnumeration<'a, 'b> = (
@@ -510,9 +527,8 @@ impl From<&FromVariant> for VariantValue {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Pointer {
-    // TODO: we don't know the width of the pointer
-    underlying_type: Option<TypeRef>,
-    attributes: PointerAttributes,
+    pub underlying_type: Option<TypeRef>,
+    pub attributes: PointerAttributes,
 }
 
 type FromPointer<'a, 'b> = (
@@ -818,14 +834,63 @@ impl Typed for PrimitiveKind {
     }
 }
 
+impl std::fmt::Display for PrimitiveKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PrimitiveKind::NoType => write!(f, "NoType"),
+            PrimitiveKind::Void => write!(f, "Void"),
+            PrimitiveKind::Char => write!(f, "Char"),
+            PrimitiveKind::UChar => write!(f, "UChar"),
+            PrimitiveKind::RChar => write!(f, "RChar"),
+            PrimitiveKind::WChar => write!(f, "WChar"),
+            PrimitiveKind::RChar16 => write!(f, "RChar16"),
+            PrimitiveKind::RChar32 => write!(f, "RChar32"),
+            PrimitiveKind::I8 => write!(f, "I8"),
+            PrimitiveKind::U8 => write!(f, "U8"),
+            PrimitiveKind::Short => write!(f, "Short"),
+            PrimitiveKind::UShort => write!(f, "UShort"),
+            PrimitiveKind::I16 => write!(f, "I16"),
+            PrimitiveKind::U16 => write!(f, "U16"),
+            PrimitiveKind::Long => write!(f, "Long"),
+            PrimitiveKind::ULong => write!(f, "ULong"),
+            PrimitiveKind::I32 => write!(f, "I32"),
+            PrimitiveKind::U32 => write!(f, "U32"),
+            PrimitiveKind::Quad => write!(f, "Quad"),
+            PrimitiveKind::UQuad => write!(f, "UQuad"),
+            PrimitiveKind::I64 => write!(f, "I64"),
+            PrimitiveKind::U64 => write!(f, "U64"),
+            PrimitiveKind::Octa => write!(f, "Octa"),
+            PrimitiveKind::UOcta => write!(f, "UOcta"),
+            PrimitiveKind::I128 => write!(f, "I128"),
+            PrimitiveKind::U128 => write!(f, "U128"),
+            PrimitiveKind::F16 => write!(f, "F16"),
+            PrimitiveKind::F32 => write!(f, "F32"),
+            PrimitiveKind::F32PP => write!(f, "F32PP"),
+            PrimitiveKind::F48 => write!(f, "F48"),
+            PrimitiveKind::F64 => write!(f, "F64"),
+            PrimitiveKind::F80 => write!(f, "F80"),
+            PrimitiveKind::F128 => write!(f, "F128"),
+            PrimitiveKind::Complex32 => write!(f, "Complex32"),
+            PrimitiveKind::Complex64 => write!(f, "Complex64"),
+            PrimitiveKind::Complex80 => write!(f, "Complex80"),
+            PrimitiveKind::Complex128 => write!(f, "Complex128"),
+            PrimitiveKind::Bool8 => write!(f, "Bool8"),
+            PrimitiveKind::Bool16 => write!(f, "Bool16"),
+            PrimitiveKind::Bool32 => write!(f, "Bool32"),
+            PrimitiveKind::Bool64 => write!(f, "Bool64"),
+            PrimitiveKind::HRESULT => write!(f, "HRESULT"),
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Array {
-    element_type: TypeRef,
-    indexing_type: TypeRef,
-    stride: Option<u32>,
-    size: usize,
-    dimensions_bytes: Vec<usize>,
-    dimensions_elements: Vec<usize>,
+    pub element_type: TypeRef,
+    pub indexing_type: TypeRef,
+    pub stride: Option<u32>,
+    pub size: usize,
+    pub dimensions_bytes: Vec<usize>,
+    pub dimensions_elements: Vec<usize>,
 }
 
 impl Typed for Array {
@@ -962,10 +1027,10 @@ impl From<FromArgumentList<'_, '_>> for ArgumentList {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Modifier {
-    underlying_type: TypeRef,
-    constant: bool,
-    volatile: bool,
-    unaligned: bool,
+    pub underlying_type: TypeRef,
+    pub constant: bool,
+    pub volatile: bool,
+    pub unaligned: bool,
 }
 
 type FromModifier<'a, 'b> = (
@@ -999,9 +1064,9 @@ impl From<FromModifier<'_, '_>> for Modifier {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Member {
-    name: String,
-    underlying_type: TypeRef,
-    offset: usize,
+    pub name: String,
+    pub underlying_type: TypeRef,
+    pub offset: usize,
 }
 
 type FromMember<'a, 'b> = (
@@ -1034,8 +1099,8 @@ impl From<FromMember<'_, '_>> for Member {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Procedure {
-    return_type: Option<TypeRef>,
-    argument_list: Vec<TypeRef>,
+    pub return_type: Option<TypeRef>,
+    pub argument_list: Vec<TypeRef>,
 }
 
 type FromProcedure<'a, 'b> = (
