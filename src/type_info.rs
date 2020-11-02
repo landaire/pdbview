@@ -319,10 +319,12 @@ impl Typed for Union {
         if self.properties.forward_reference {
             // Find the implementation
             for (_key, value) in &pdb.types {
-                if let Type::Union(union) = &*value.as_ref().borrow() {
-                    if !union.properties.forward_reference && union.unique_name == self.unique_name
-                    {
-                        return union.type_size(pdb);
+                if let Some(value) = value.as_ref().try_borrow().ok() {
+                    if let Type::Union(union) = &*value {
+                        if !union.properties.forward_reference && union.unique_name == self.unique_name
+                        {
+                            return union.type_size(pdb);
+                        }
                     }
                 }
             }
