@@ -72,9 +72,9 @@ pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) ->
     }
 
     // Iterate through all of the parsed types once just to update any necessary info
-    for typ in output_pdb.types.values() {
-        println!("{:#?}", typ.as_ref().borrow());
-    }
+    // for typ in output_pdb.types.values() {
+    //     println!("{:#?}", typ.as_ref().borrow());
+    // }
 
     debug!("grabbing public symbols");
     // Parse public symbols
