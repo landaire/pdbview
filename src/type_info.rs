@@ -1,7 +1,8 @@
+use crate::error::ParsingError;
 use crate::symbol_types::ParsedPdb;
 use crate::symbol_types::TypeRef;
 use serde::{Deserialize, Serialize};
-use std::convert::From;
+use std::convert::{From, TryFrom, TryInto};
 use std::rc::Rc;
 
 pub trait Typed {
@@ -99,9 +100,10 @@ pub struct TypeProperties {
     pub mocom: u8,
 }
 
-impl From<pdb::TypeProperties> for TypeProperties {
-    fn from(props: pdb::TypeProperties) -> Self {
-        TypeProperties {
+impl TryFrom<pdb::TypeProperties> for TypeProperties {
+    type Error = ParsingError;
+    fn try_from(props: pdb::TypeProperties) -> Result<Self, Self::Error> {
+        Ok(TypeProperties {
             packed: props.packed(),
             constructors: props.constructors(),
             overlapped_operators: props.overloaded_operators(),
@@ -116,7 +118,7 @@ impl From<pdb::TypeProperties> for TypeProperties {
             hfa: props.hfa(),
             intristic_type: props.intrinsic_type(),
             mocom: props.mocom(),
-        }
+        })
     }
 }
 
@@ -136,7 +138,7 @@ impl Typed for Class {
         if self.properties.forward_reference {
             // Find the implementation
             for (_key, value) in &pdb.types {
-                if let Some(borrow) = value.as_ref().try_borrow().ok() {
+                if let Ok(borrow) = value.as_ref().try_borrow() {
                     if let Type::Class(class) = &*borrow {
                         if !class.properties.forward_reference
                             && class.unique_name == self.unique_name
@@ -146,6 +148,7 @@ impl Typed for Class {
                     }
                 }
             }
+
             println!("could not get forward reference for {}", self.name);
         }
 
@@ -159,8 +162,9 @@ type FromClass<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromClass<'_, '_>> for Class {
-    fn from(info: FromClass<'_, '_>) -> Self {
+impl TryFrom<FromClass<'_, '_>> for Class {
+    type Error = ParsingError;
+    fn try_from(info: FromClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
         let pdb::ClassType {
@@ -198,15 +202,15 @@ impl From<FromClass<'_, '_>> for Class {
 
         let unique_name = unique_name.map(|s| s.to_string().into_owned());
 
-        Class {
+        Ok(Class {
             name: name.to_string().into_owned(),
             unique_name,
-            kind: kind.into(),
-            properties: properties.into(),
+            kind: kind.try_into()?,
+            properties: properties.try_into()?,
             derived_from,
             fields,
             size: size as usize,
-        }
+        })
     }
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -222,8 +226,9 @@ type FromBaseClass<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromBaseClass<'_, '_>> for BaseClass {
-    fn from(info: FromBaseClass<'_, '_>) -> Self {
+impl TryFrom<FromBaseClass<'_, '_>> for BaseClass {
+    type Error = ParsingError;
+    fn try_from(info: FromBaseClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
         let pdb::BaseClassType {
@@ -233,14 +238,13 @@ impl From<FromBaseClass<'_, '_>> for BaseClass {
             offset,
         } = *class;
 
-        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)
-            .expect("failed to resolve dependent type");
+        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)?;
 
-        BaseClass {
-            kind: kind.into(),
+        Ok(BaseClass {
+            kind: kind.try_into()?,
             base_class,
             offset: offset as usize,
-        }
+        })
     }
 }
 
@@ -259,8 +263,9 @@ type FromVirtualBaseClass<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
-    fn from(info: FromVirtualBaseClass<'_, '_>) -> Self {
+impl TryFrom<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
+    type Error = ParsingError;
+    fn try_from(info: FromVirtualBaseClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
         let pdb::VirtualBaseClassType {
@@ -277,13 +282,13 @@ impl From<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
         let base_pointer = crate::parse::handle_type(base_pointer, output_pdb, type_finder)
             .expect("failed to resolve underlying type");
 
-        VirtualBaseClass {
+        Ok(VirtualBaseClass {
             direct,
             base_class,
             base_pointer,
             base_pointer_offset: base_pointer_offset as usize,
             virtual_base_offset: virtual_base_offset as usize,
-        }
+        })
     }
 }
 
@@ -294,13 +299,14 @@ pub enum ClassKind {
     Interface,
 }
 
-impl From<pdb::ClassKind> for ClassKind {
-    fn from(kind: pdb::ClassKind) -> Self {
-        match kind {
+impl TryFrom<pdb::ClassKind> for ClassKind {
+    type Error = ParsingError;
+    fn try_from(kind: pdb::ClassKind) -> Result<Self, Self::Error> {
+        Ok(match kind {
             pdb::ClassKind::Class => ClassKind::Class,
             pdb::ClassKind::Struct => ClassKind::Struct,
             pdb::ClassKind::Interface => ClassKind::Interface,
-        }
+        })
     }
 }
 
@@ -350,8 +356,9 @@ type FromUnion<'a, 'b> = (
     &'b pdb::TypeFinder<'a>,
     &'b mut crate::symbol_types::ParsedPdb,
 );
-impl From<FromUnion<'_, '_>> for Union {
-    fn from(data: FromUnion<'_, '_>) -> Self {
+impl TryFrom<FromUnion<'_, '_>> for Union {
+    type Error = ParsingError;
+    fn try_from(data: FromUnion<'_, '_>) -> Result<Self, Self::Error> {
         let (union, type_finder, output_pdb) = data;
         let pdb::UnionType {
             count,
@@ -362,8 +369,7 @@ impl From<FromUnion<'_, '_>> for Union {
             unique_name,
         } = union;
 
-        let fields = crate::parse::handle_type(*fields, output_pdb, type_finder)
-            .expect("failed to resolve dependent type");
+        let fields = crate::parse::handle_type(*fields, output_pdb, type_finder)?;
 
         // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
         let fields = if *count > 0 {
@@ -382,13 +388,13 @@ impl From<FromUnion<'_, '_>> for Union {
         let mut union = Union {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
-            properties: (*properties).into(),
+            properties: (*properties).try_into()?,
             size: *size as usize,
             count: *count as usize,
             fields,
         };
 
-        union
+        Ok(union)
     }
 }
 
@@ -403,8 +409,9 @@ pub struct Bitfield {
     pub len: usize,
     pub position: usize,
 }
-impl From<FromBitfield<'_, '_>> for Bitfield {
-    fn from(data: FromBitfield<'_, '_>) -> Self {
+impl TryFrom<FromBitfield<'_, '_>> for Bitfield {
+    type Error = ParsingError;
+    fn try_from(data: FromBitfield<'_, '_>) -> Result<Self, Self::Error> {
         let (bitfield, type_finder, output_pdb) = data;
         let pdb::BitfieldType {
             underlying_type,
@@ -412,14 +419,13 @@ impl From<FromBitfield<'_, '_>> for Bitfield {
             position,
         } = *bitfield;
 
-        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)?;
 
-        Bitfield {
+        Ok(Bitfield {
             underlying_type,
             len: length as usize,
             position: position as usize,
-        }
+        })
     }
 }
 
@@ -443,8 +449,9 @@ type FromEnumeration<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromEnumeration<'_, '_>> for Enumeration {
-    fn from(data: FromEnumeration<'_, '_>) -> Self {
+impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
+    type Error = ParsingError;
+    fn try_from(data: FromEnumeration<'_, '_>) -> Result<Self, Self::Error> {
         let (e, type_finder, output_pdb) = data;
 
         let pdb::EnumerationType {
@@ -456,16 +463,15 @@ impl From<FromEnumeration<'_, '_>> for Enumeration {
             unique_name,
         } = e;
 
-        let underlying_type = crate::parse::handle_type(*underlying_type, output_pdb, type_finder)
-            .expect("failed to resolve underlying type");
+        let underlying_type = crate::parse::handle_type(*underlying_type, output_pdb, type_finder)?;
         // TODO: Variants
 
-        Enumeration {
+        Ok(Enumeration {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             underlying_type,
             variants: vec![],
-        }
+        })
     }
 }
 
@@ -477,8 +483,9 @@ pub struct EnumVariant {
 
 type FromEnumerate<'a, 'b> = &'b pdb::EnumerateType<'a>;
 
-impl From<FromEnumerate<'_, '_>> for EnumVariant {
-    fn from(data: FromEnumerate<'_, '_>) -> Self {
+impl TryFrom<FromEnumerate<'_, '_>> for EnumVariant {
+    type Error = ParsingError;
+    fn try_from(data: FromEnumerate<'_, '_>) -> Result<Self, Self::Error> {
         let e = data;
 
         let pdb::EnumerateType {
@@ -487,10 +494,10 @@ impl From<FromEnumerate<'_, '_>> for EnumVariant {
             name,
         } = e;
 
-        Self {
+        Ok(Self {
             name: name.to_string().into_owned(),
-            value: value.into(),
-        }
+            value: value.try_into()?,
+        })
     }
 }
 
@@ -508,11 +515,12 @@ pub enum VariantValue {
 
 type FromVariant = pdb::Variant;
 
-impl From<&FromVariant> for VariantValue {
-    fn from(data: &FromVariant) -> Self {
+impl TryFrom<&FromVariant> for VariantValue {
+    type Error = ParsingError;
+    fn try_from(data: &FromVariant) -> Result<Self, Self::Error> {
         let variant = data;
 
-        match *variant {
+        let value = match *variant {
             pdb::Variant::U8(val) => VariantValue::U8(val),
             pdb::Variant::U16(val) => VariantValue::U16(val),
             pdb::Variant::U32(val) => VariantValue::U32(val),
@@ -521,7 +529,9 @@ impl From<&FromVariant> for VariantValue {
             pdb::Variant::I16(val) => VariantValue::I16(val),
             pdb::Variant::I32(val) => VariantValue::I32(val),
             pdb::Variant::I64(val) => VariantValue::I64(val),
-        }
+        };
+
+        Ok(value)
     }
 }
 
@@ -536,8 +546,9 @@ type FromPointer<'a, 'b> = (
     &'b pdb::TypeFinder<'a>,
     &'b mut crate::symbol_types::ParsedPdb,
 );
-impl From<FromPointer<'_, '_>> for Pointer {
-    fn from(data: FromPointer<'_, '_>) -> Self {
+impl TryFrom<FromPointer<'_, '_>> for Pointer {
+    type Error = ParsingError;
+    fn try_from(data: FromPointer<'_, '_>) -> Result<Self, Self::Error> {
         let (pointer, type_finder, output_pdb) = data;
         let pdb::PointerType {
             underlying_type,
@@ -548,10 +559,10 @@ impl From<FromPointer<'_, '_>> for Pointer {
         let underlying_type =
             crate::parse::handle_type(underlying_type, output_pdb, type_finder).ok();
 
-        Pointer {
+        Ok(Pointer {
             underlying_type,
-            attributes: attributes.into(),
-        }
+            attributes: attributes.try_into()?,
+        })
     }
 }
 
@@ -572,9 +583,10 @@ pub enum PointerKind {
     Ptr64,
 }
 
-impl From<pdb::PointerKind> for PointerKind {
-    fn from(kind: pdb::PointerKind) -> Self {
-        match kind {
+impl TryFrom<pdb::PointerKind> for PointerKind {
+    type Error = ParsingError;
+    fn try_from(kind: pdb::PointerKind) -> Result<Self, Self::Error> {
+        let kind = match kind {
             pdb::PointerKind::Near16 => PointerKind::Near16,
             pdb::PointerKind::Far16 => PointerKind::Far16,
             pdb::PointerKind::Huge16 => PointerKind::Huge16,
@@ -588,7 +600,9 @@ impl From<pdb::PointerKind> for PointerKind {
             pdb::PointerKind::Near32 => PointerKind::Near32,
             pdb::PointerKind::Far32 => PointerKind::Far32,
             pdb::PointerKind::Ptr64 => PointerKind::Ptr64,
-        }
+        };
+
+        Ok(kind)
     }
 }
 
@@ -615,10 +629,11 @@ pub struct PointerAttributes {
     is_mocom: bool,
 }
 
-impl From<pdb::PointerAttributes> for PointerAttributes {
-    fn from(attr: pdb::PointerAttributes) -> Self {
-        PointerAttributes {
-            kind: attr.pointer_kind().into(),
+impl TryFrom<pdb::PointerAttributes> for PointerAttributes {
+    type Error = ParsingError;
+    fn try_from(attr: pdb::PointerAttributes) -> Result<Self, Self::Error> {
+        let attr = PointerAttributes {
+            kind: attr.pointer_kind().try_into()?,
             is_volatile: attr.is_volatile(),
             is_const: attr.is_const(),
             is_unaligned: attr.is_unaligned(),
@@ -626,7 +641,9 @@ impl From<pdb::PointerAttributes> for PointerAttributes {
             is_reference: attr.is_reference(),
             size: attr.size() as usize,
             is_mocom: attr.is_mocom(),
-        }
+        };
+
+        Ok(attr)
     }
 }
 
@@ -636,14 +653,17 @@ pub struct Primitive {
     pub indirection: Option<Indirection>,
 }
 
-impl From<&pdb::PrimitiveType> for Primitive {
-    fn from(typ: &pdb::PrimitiveType) -> Self {
+impl TryFrom<&pdb::PrimitiveType> for Primitive {
+    type Error = ParsingError;
+    fn try_from(typ: &pdb::PrimitiveType) -> Result<Self, Self::Error> {
         let pdb::PrimitiveType { kind, indirection } = typ;
 
-        Primitive {
-            kind: kind.into(),
-            indirection: indirection.map(|i| i.into()),
-        }
+        let prim = Primitive {
+            kind: kind.try_into()?,
+            indirection: indirection.map(|i| i.try_into()).transpose()?,
+        };
+
+        Ok(prim)
     }
 }
 
@@ -668,9 +688,10 @@ pub enum Indirection {
     Near128,
 }
 
-impl From<pdb::Indirection> for Indirection {
-    fn from(kind: pdb::Indirection) -> Self {
-        match kind {
+impl TryFrom<pdb::Indirection> for Indirection {
+    type Error = ParsingError;
+    fn try_from(kind: pdb::Indirection) -> Result<Self, Self::Error> {
+        let kind = match kind {
             pdb::Indirection::Near16 => Indirection::Near16,
             pdb::Indirection::Far16 => Indirection::Far16,
             pdb::Indirection::Huge16 => Indirection::Huge16,
@@ -678,7 +699,9 @@ impl From<pdb::Indirection> for Indirection {
             pdb::Indirection::Far32 => Indirection::Far32,
             pdb::Indirection::Near64 => Indirection::Near64,
             pdb::Indirection::Near128 => Indirection::Near128,
-        }
+        };
+
+        Ok(kind)
     }
 }
 
@@ -739,9 +762,10 @@ pub enum PrimitiveKind {
     HRESULT,
 }
 
-impl From<&pdb::PrimitiveKind> for PrimitiveKind {
-    fn from(kind: &pdb::PrimitiveKind) -> Self {
-        match *kind {
+impl TryFrom<&pdb::PrimitiveKind> for PrimitiveKind {
+    type Error = ParsingError;
+    fn try_from(kind: &pdb::PrimitiveKind) -> Result<Self, Self::Error> {
+        let kind = match *kind {
             pdb::PrimitiveKind::NoType => PrimitiveKind::NoType,
             pdb::PrimitiveKind::Void => PrimitiveKind::Void,
             pdb::PrimitiveKind::Char => PrimitiveKind::Char,
@@ -784,7 +808,9 @@ impl From<&pdb::PrimitiveKind> for PrimitiveKind {
             pdb::PrimitiveKind::Bool32 => PrimitiveKind::Bool32,
             pdb::PrimitiveKind::Bool64 => PrimitiveKind::Bool64,
             pdb::PrimitiveKind::HRESULT => PrimitiveKind::HRESULT,
-        }
+        };
+
+        Ok(kind)
     }
 }
 
@@ -910,6 +936,7 @@ impl Typed for Array {
 
         for byte_size in &self.dimensions_bytes {
             let size = *byte_size / running_size;
+
             self.dimensions_elements.push(size);
 
             running_size = size;
@@ -923,8 +950,9 @@ type FromArray<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromArray<'_, '_>> for Array {
-    fn from(data: FromArray<'_, '_>) -> Self {
+impl TryFrom<FromArray<'_, '_>> for Array {
+    type Error = ParsingError;
+    fn try_from(data: FromArray<'_, '_>) -> Result<Self, Self::Error> {
         let (array, type_finder, output_pdb) = data;
 
         let pdb::ArrayType {
@@ -934,21 +962,20 @@ impl From<FromArray<'_, '_>> for Array {
             dimensions,
         } = array;
 
-        let element_type = crate::parse::handle_type(*element_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
-
-        let indexing_type = crate::parse::handle_type(*indexing_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let element_type = crate::parse::handle_type(*element_type, output_pdb, type_finder)?;
+        let indexing_type = crate::parse::handle_type(*indexing_type, output_pdb, type_finder)?;
         let size = *dimensions.last().unwrap() as usize;
 
-        Array {
+        let arr = Array {
             element_type,
             indexing_type,
             stride: *stride,
             size,
             dimensions_bytes: dimensions.iter().map(|b| *b as usize).collect(),
             dimensions_elements: Vec::with_capacity(dimensions.len()),
-        }
+        };
+
+        Ok(arr)
     }
 }
 
@@ -961,8 +988,9 @@ type FromFieldList<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromFieldList<'_, '_>> for FieldList {
-    fn from(data: FromFieldList<'_, '_>) -> Self {
+impl TryFrom<FromFieldList<'_, '_>> for FieldList {
+    type Error = ParsingError;
+    fn try_from(data: FromFieldList<'_, '_>) -> Result<Self, Self::Error> {
         let (fields, type_finder, output_pdb) = data;
 
         let pdb::FieldList {
@@ -970,18 +998,15 @@ impl From<FromFieldList<'_, '_>> for FieldList {
             continuation,
         } = fields;
 
-        let mut result_fields: Vec<TypeRef> = fields
+        let result_fields: Result<Vec<TypeRef>, Self::Error> = fields
             .iter()
-            .map(|typ| {
-                crate::parse::handle_type_data(typ, output_pdb, type_finder)
-                    .ok()
-                    .unwrap_or_else(|| panic!("failed to parse dependent type"))
-            })
+            .map(|typ| crate::parse::handle_type_data(typ, output_pdb, type_finder))
             .collect();
 
+        let mut result_fields = result_fields?;
+
         if let Some(continuation) = continuation {
-            let field = crate::parse::handle_type(*continuation, output_pdb, type_finder)
-                .expect("failed to parse dependent type");
+            let field = crate::parse::handle_type(*continuation, output_pdb, type_finder)?;
             let field = field.as_ref().borrow();
             if let Type::FieldList(fields) = &*field {
                 result_fields.append(&mut fields.0.clone())
@@ -993,7 +1018,7 @@ impl From<FromFieldList<'_, '_>> for FieldList {
             }
         }
 
-        FieldList(result_fields)
+        Ok(FieldList(result_fields))
     }
 }
 
@@ -1006,22 +1031,19 @@ type FromArgumentList<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromArgumentList<'_, '_>> for ArgumentList {
-    fn from(data: FromArgumentList<'_, '_>) -> Self {
+impl TryFrom<FromArgumentList<'_, '_>> for ArgumentList {
+    type Error = ParsingError;
+    fn try_from(data: FromArgumentList<'_, '_>) -> Result<Self, Self::Error> {
         let (arguments, type_finder, output_pdb) = data;
 
         let pdb::ArgumentList { arguments } = arguments;
 
-        let arguments: Vec<TypeRef> = arguments
+        let arguments: Result<Vec<TypeRef>, Self::Error> = arguments
             .iter()
-            .map(|typ| {
-                crate::parse::handle_type(*typ, output_pdb, type_finder)
-                    .ok()
-                    .unwrap_or_else(|| panic!("failed to parse dependent type"))
-            })
+            .map(|typ| crate::parse::handle_type(*typ, output_pdb, type_finder))
             .collect();
 
-        ArgumentList(arguments)
+        Ok(ArgumentList(arguments?))
     }
 }
 
@@ -1039,8 +1061,9 @@ type FromModifier<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromModifier<'_, '_>> for Modifier {
-    fn from(data: FromModifier<'_, '_>) -> Self {
+impl TryFrom<FromModifier<'_, '_>> for Modifier {
+    type Error = ParsingError;
+    fn try_from(data: FromModifier<'_, '_>) -> Result<Self, Self::Error> {
         let (modifier, type_finder, output_pdb) = data;
 
         let pdb::ModifierType {
@@ -1050,15 +1073,14 @@ impl From<FromModifier<'_, '_>> for Modifier {
             unaligned,
         } = *modifier;
 
-        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)?;
 
-        Modifier {
+        Ok(Modifier {
             underlying_type,
             constant,
             volatile,
             unaligned,
-        }
+        })
     }
 }
 
@@ -1075,8 +1097,10 @@ type FromMember<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromMember<'_, '_>> for Member {
-    fn from(data: FromMember<'_, '_>) -> Self {
+impl TryFrom<FromMember<'_, '_>> for Member {
+    type Error = ParsingError;
+
+    fn try_from(data: FromMember<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
         let pdb::MemberType {
@@ -1086,14 +1110,13 @@ impl From<FromMember<'_, '_>> for Member {
             name,
         } = *member;
 
-        let underlying_type = crate::parse::handle_type(field_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let underlying_type = crate::parse::handle_type(field_type, output_pdb, type_finder)?;
 
-        Member {
+        Ok(Member {
             name: name.to_string().into_owned(),
             underlying_type,
             offset: offset as usize,
-        }
+        })
     }
 }
 
@@ -1109,8 +1132,9 @@ type FromProcedure<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromProcedure<'_, '_>> for Procedure {
-    fn from(data: FromProcedure<'_, '_>) -> Self {
+impl TryFrom<FromProcedure<'_, '_>> for Procedure {
+    type Error = ParsingError;
+    fn try_from(data: FromProcedure<'_, '_>) -> Result<Self, Self::Error> {
         let (proc, type_finder, output_pdb) = data;
 
         let pdb::ProcedureType {
@@ -1120,14 +1144,12 @@ impl From<FromProcedure<'_, '_>> for Procedure {
             argument_list,
         } = *proc;
 
-        let return_type = return_type.map(|return_type| {
-            crate::parse::handle_type(return_type, output_pdb, type_finder)
-                .expect("failed to parse dependent type")
-        });
+        let return_type = return_type
+            .map(|return_type| crate::parse::handle_type(return_type, output_pdb, type_finder))
+            .transpose()?;
 
         let arguments: Vec<TypeRef>;
-        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)?;
         if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
@@ -1137,10 +1159,10 @@ impl From<FromProcedure<'_, '_>> for Procedure {
             )
         }
 
-        Procedure {
+        Ok(Procedure {
             return_type,
             argument_list: arguments,
-        }
+        })
     }
 }
 #[derive(Debug, Serialize, Deserialize)]
@@ -1157,8 +1179,9 @@ type FromMemberFunction<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromMemberFunction<'_, '_>> for MemberFunction {
-    fn from(data: FromMemberFunction<'_, '_>) -> Self {
+impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
+    type Error = ParsingError;
+    fn try_from(data: FromMemberFunction<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
         let pdb::MemberFunctionType {
@@ -1171,20 +1194,16 @@ impl From<FromMemberFunction<'_, '_>> for MemberFunction {
             this_adjustment,
         } = *member;
 
-        let return_type = crate::parse::handle_type(return_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let return_type = crate::parse::handle_type(return_type, output_pdb, type_finder)?;
 
-        let class_type = crate::parse::handle_type(class_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let class_type = crate::parse::handle_type(class_type, output_pdb, type_finder)?;
 
-        let this_pointer_type = this_pointer_type.map(|ptr_type| {
-            crate::parse::handle_type(ptr_type, output_pdb, type_finder)
-                .expect("failed to parse dependent type")
-        });
+        let this_pointer_type = this_pointer_type
+            .map(|ptr_type| crate::parse::handle_type(ptr_type, output_pdb, type_finder))
+            .transpose()?;
 
         let arguments: Vec<TypeRef>;
-        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)?;
         if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
@@ -1194,12 +1213,12 @@ impl From<FromMemberFunction<'_, '_>> for MemberFunction {
             )
         }
 
-        MemberFunction {
+        Ok(MemberFunction {
             return_type,
             class_type,
             this_pointer_type,
             argument_list: arguments,
-        }
+        })
     }
 }
 
@@ -1212,17 +1231,18 @@ type FromMethodList<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromMethodList<'_, '_>> for MethodList {
-    fn from(data: FromMethodList<'_, '_>) -> Self {
+impl TryFrom<FromMethodList<'_, '_>> for MethodList {
+    type Error = ParsingError;
+    fn try_from(data: FromMethodList<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
         let pdb::MethodList { methods } = method_list;
-        let converted_methods = methods
+        let converted_methods: Result<Vec<MethodListEntry>, Self::Error> = methods
             .iter()
-            .map(|method| (method, type_finder, &mut *output_pdb).into())
+            .map(|method| (method, type_finder, &mut *output_pdb).try_into())
             .collect();
 
-        MethodList(converted_methods)
+        Ok(MethodList(converted_methods?))
     }
 }
 
@@ -1238,8 +1258,9 @@ type FromMethodListEntry<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromMethodListEntry<'_, '_>> for MethodListEntry {
-    fn from(data: FromMethodListEntry<'_, '_>) -> Self {
+impl TryFrom<FromMethodListEntry<'_, '_>> for MethodListEntry {
+    type Error = ParsingError;
+    fn try_from(data: FromMethodListEntry<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
         let pdb::MethodListEntry {
@@ -1248,13 +1269,12 @@ impl From<FromMethodListEntry<'_, '_>> for MethodListEntry {
             vtable_offset,
         } = *method_list;
 
-        let method_type = crate::parse::handle_type(method_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let method_type = crate::parse::handle_type(method_type, output_pdb, type_finder)?;
 
-        MethodListEntry {
+        Ok(MethodListEntry {
             method_type,
             vtable_offset: vtable_offset.map(|offset| offset as usize),
-        }
+        })
     }
 }
 
@@ -1270,8 +1290,9 @@ type FromNested<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromNested<'_, '_>> for Nested {
-    fn from(data: FromNested<'_, '_>) -> Self {
+impl TryFrom<FromNested<'_, '_>> for Nested {
+    type Error = ParsingError;
+    fn try_from(data: FromNested<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
         let pdb::NestedType {
@@ -1280,13 +1301,12 @@ impl From<FromNested<'_, '_>> for Nested {
             name,
         } = *method_list;
 
-        let nested_type = crate::parse::handle_type(nested_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let nested_type = crate::parse::handle_type(nested_type, output_pdb, type_finder)?;
 
-        Nested {
+        Ok(Nested {
             name: name.to_string().into_owned(),
             nested_type,
-        }
+        })
     }
 }
 
@@ -1302,8 +1322,9 @@ type FromOverloadedMethod<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
-    fn from(data: FromOverloadedMethod<'_, '_>) -> Self {
+impl TryFrom<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
+    type Error = ParsingError;
+    fn try_from(data: FromOverloadedMethod<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
         let pdb::OverloadedMethodType {
@@ -1312,13 +1333,12 @@ impl From<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
             name,
         } = method_list;
 
-        let method_list = crate::parse::handle_type(*method_list, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let method_list = crate::parse::handle_type(*method_list, output_pdb, type_finder)?;
 
-        OverloadedMethod {
+        Ok(OverloadedMethod {
             name: name.to_string().into_owned(),
             method_list,
-        }
+        })
     }
 }
 
@@ -1335,8 +1355,9 @@ type FromMethod<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromMethod<'_, '_>> for Method {
-    fn from(data: FromMethod<'_, '_>) -> Self {
+impl TryFrom<FromMethod<'_, '_>> for Method {
+    type Error = ParsingError;
+    fn try_from(data: FromMethod<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
         let pdb::MethodType {
@@ -1346,14 +1367,13 @@ impl From<FromMethod<'_, '_>> for Method {
             name,
         } = method_list;
 
-        let method_type = crate::parse::handle_type(*method_type, output_pdb, type_finder)
-            .expect("failed to parse dependent type");
+        let method_type = crate::parse::handle_type(*method_type, output_pdb, type_finder)?;
 
-        Method {
+        Ok(Method {
             name: name.to_string().into_owned(),
             method_type,
             vtable_offset: vtable_offset.map(|offset| offset as usize),
-        }
+        })
     }
 }
 
@@ -1369,8 +1389,9 @@ type FromStaticMember<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromStaticMember<'_, '_>> for StaticMember {
-    fn from(data: FromStaticMember<'_, '_>) -> Self {
+impl TryFrom<FromStaticMember<'_, '_>> for StaticMember {
+    type Error = ParsingError;
+    fn try_from(data: FromStaticMember<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
         let pdb::StaticMemberType {
@@ -1382,10 +1403,10 @@ impl From<FromStaticMember<'_, '_>> for StaticMember {
         let field_type = crate::parse::handle_type(*field_type, output_pdb, type_finder)
             .expect("failed to parse dependent type");
 
-        StaticMember {
+        Ok(StaticMember {
             name: name.to_string().into_owned(),
             field_type,
-        }
+        })
     }
 }
 
@@ -1397,8 +1418,9 @@ type FromVirtualFunctionTablePointer<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 
-impl From<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
-    fn from(data: FromVirtualFunctionTablePointer<'_, '_>) -> Self {
+impl TryFrom<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
+    type Error = ParsingError;
+    fn try_from(data: FromVirtualFunctionTablePointer<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
         let pdb::VirtualFunctionTablePointerType { table } = *member;
@@ -1406,6 +1428,6 @@ impl From<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
         let vtable_type = crate::parse::handle_type(table, output_pdb, type_finder)
             .expect("failed to parse dependent type");
 
-        VTable(vtable_type)
+        Ok(VTable(vtable_type))
     }
 }

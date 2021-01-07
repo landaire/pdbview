@@ -196,6 +196,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
         writeln!(output, "{}", procedure.name)?;
     }
 
+    writeln!(output)?;
     writeln!(output, "Types:")?;
 
     let width = 20usize;
@@ -211,7 +212,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
 
                 writeln!(
                     output,
-                    "\t\t{:width$} {} {}",
+                    "\t{:width$} {} {}",
                     class.kind,
                     class.name,
                     class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
@@ -231,7 +232,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                 //     class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
                 //     width = width
                 // )?;
-                writeln!(output, "\t\tFields:")?;
+                writeln!(output, "\tFields:")?;
                 for field in &class.fields {
                     let field: &Type = &*field.as_ref().borrow();
 
@@ -240,7 +241,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                             let member_ty: &Type = &*member.underlying_type.as_ref().borrow();
                             writeln!(
                                 output,
-                                "\t\t\t0x{:X} {:width$} {}",
+                                "\t\t0x{:04X} {:width$} {}",
                                 member.offset,
                                 member.name,
                                 format_type_name(member_ty),
@@ -250,7 +251,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                         Type::BaseClass(base) => {
                             writeln!(
                                 output,
-                                "\t\t\t0x{:X} <BaseClass>  {}",
+                                "\t\t0x{:04X} <BaseClass>  {}",
                                 base.offset,
                                 format_type_name(&*base.base_class.as_ref().borrow())
                             )?;
@@ -264,7 +265,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                 continue;
             }
         }
-        writeln!(output);
+        writeln!(output)?;
     }
 
     Ok(())

@@ -206,91 +206,91 @@ pub fn handle_type_data(
     use crate::type_info::{Class, Type};
     let typ = match typ {
         TypeData::Class(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Class(typ)
         }
         TypeData::Union(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Union(typ)
         }
         TypeData::Bitfield(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Bitfield(typ)
         }
         TypeData::Array(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Array(typ)
         }
         TypeData::Enumerate(data) => {
-            let typ = data.into();
+            let typ = data.try_into()?;
             Type::EnumVariant(typ)
         }
         TypeData::Enumeration(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Enumeration(typ)
         }
         TypeData::Pointer(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Pointer(typ)
         }
         TypeData::Primitive(data) => {
-            let typ = data.into();
+            let typ = data.try_into()?;
             Type::Primitive(typ)
         }
         TypeData::FieldList(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::FieldList(typ)
         }
         TypeData::Modifier(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Modifier(typ)
         }
         TypeData::Member(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Member(typ)
         }
         TypeData::ArgumentList(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::ArgumentList(typ)
         }
         TypeData::Procedure(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Procedure(typ)
         }
         TypeData::MemberFunction(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::MemberFunction(typ)
         }
         TypeData::MethodList(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::MethodList(typ)
         }
         TypeData::VirtualBaseClass(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::VirtualBaseClass(typ)
         }
         TypeData::Nested(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Nested(typ)
         }
         TypeData::OverloadedMethod(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::OverloadedMethod(typ)
         }
         TypeData::Method(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::Method(typ)
         }
         TypeData::StaticMember(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::StaticMember(typ)
         }
         TypeData::BaseClass(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::BaseClass(typ)
         }
         TypeData::VirtualFunctionTablePointer(data) => {
-            let typ = (data, type_finder, output_pdb).into();
+            let typ = (data, type_finder, output_pdb).try_into()?;
             Type::VTable(typ)
         }
         other => {

@@ -9,14 +9,14 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 pub type TypeRef = Rc<RefCell<Type>>;
-
+pub type TypeIndexNumber = u32;
 /// Represents a PDB that has been fully parsed
 #[derive(Debug, Serialize)]
 pub struct ParsedPdb {
     pub path: PathBuf,
     pub assembly_info: AssemblyInfo,
     pub public_symbols: Vec<PublicSymbol>,
-    pub types: HashMap<u32, TypeRef>,
+    pub types: HashMap<TypeIndexNumber, TypeRef>,
     pub procedures: Vec<Procedure>,
     pub global_data: Vec<Data>,
     pub debug_modules: Vec<DebugModule>,
