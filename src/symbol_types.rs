@@ -52,14 +52,14 @@ pub struct BuildInfo {
 }
 
 impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo {
-    type Error = crate::error::ParsingError;
+    type Error = crate::error::Error;
 
     fn try_from(
         info: (&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>),
     ) -> Result<Self, Self::Error> {
         let (symbol, finder) = info;
         if finder.is_none() {
-            return Err(crate::error::ParsingError::MissingDependency("IdFinder"));
+            return Err(crate::error::Error::MissingDependency("IdFinder"));
         }
 
         let finder = finder.unwrap();
@@ -90,7 +90,7 @@ impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo 
             _ => unreachable!(),
         };
 
-        Err(crate::error::ParsingError::Unsupported("BuildInfo"))
+        Err(crate::error::Error::Unsupported("BuildInfo"))
     }
 }
 

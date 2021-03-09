@@ -1,4 +1,4 @@
-use crate::error::ParsingError;
+use crate::error::Error;
 use crate::symbol_types::ParsedPdb;
 use crate::symbol_types::TypeRef;
 use serde::{Deserialize, Serialize};
@@ -101,7 +101,7 @@ pub struct TypeProperties {
 }
 
 impl TryFrom<pdb::TypeProperties> for TypeProperties {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(props: pdb::TypeProperties) -> Result<Self, Self::Error> {
         Ok(TypeProperties {
             packed: props.packed(),
@@ -163,7 +163,7 @@ type FromClass<'a, 'b> = (
 );
 
 impl TryFrom<FromClass<'_, '_>> for Class {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(info: FromClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
@@ -227,7 +227,7 @@ type FromBaseClass<'a, 'b> = (
 );
 
 impl TryFrom<FromBaseClass<'_, '_>> for BaseClass {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(info: FromBaseClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
@@ -264,7 +264,7 @@ type FromVirtualBaseClass<'a, 'b> = (
 );
 
 impl TryFrom<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(info: FromVirtualBaseClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
@@ -300,7 +300,7 @@ pub enum ClassKind {
 }
 
 impl TryFrom<pdb::ClassKind> for ClassKind {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(kind: pdb::ClassKind) -> Result<Self, Self::Error> {
         Ok(match kind {
             pdb::ClassKind::Class => ClassKind::Class,
@@ -357,7 +357,7 @@ type FromUnion<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 impl TryFrom<FromUnion<'_, '_>> for Union {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromUnion<'_, '_>) -> Result<Self, Self::Error> {
         let (union, type_finder, output_pdb) = data;
         let pdb::UnionType {
@@ -410,7 +410,7 @@ pub struct Bitfield {
     pub position: usize,
 }
 impl TryFrom<FromBitfield<'_, '_>> for Bitfield {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromBitfield<'_, '_>) -> Result<Self, Self::Error> {
         let (bitfield, type_finder, output_pdb) = data;
         let pdb::BitfieldType {
@@ -450,7 +450,7 @@ type FromEnumeration<'a, 'b> = (
 );
 
 impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromEnumeration<'_, '_>) -> Result<Self, Self::Error> {
         let (e, type_finder, output_pdb) = data;
 
@@ -484,7 +484,7 @@ pub struct EnumVariant {
 type FromEnumerate<'a, 'b> = &'b pdb::EnumerateType<'a>;
 
 impl TryFrom<FromEnumerate<'_, '_>> for EnumVariant {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromEnumerate<'_, '_>) -> Result<Self, Self::Error> {
         let e = data;
 
@@ -516,7 +516,7 @@ pub enum VariantValue {
 type FromVariant = pdb::Variant;
 
 impl TryFrom<&FromVariant> for VariantValue {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: &FromVariant) -> Result<Self, Self::Error> {
         let variant = data;
 
@@ -547,7 +547,7 @@ type FromPointer<'a, 'b> = (
     &'b mut crate::symbol_types::ParsedPdb,
 );
 impl TryFrom<FromPointer<'_, '_>> for Pointer {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromPointer<'_, '_>) -> Result<Self, Self::Error> {
         let (pointer, type_finder, output_pdb) = data;
         let pdb::PointerType {
@@ -583,7 +583,7 @@ pub enum PointerKind {
 }
 
 impl TryFrom<pdb::PointerKind> for PointerKind {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(kind: pdb::PointerKind) -> Result<Self, Self::Error> {
         let kind = match kind {
             pdb::PointerKind::Near16 => PointerKind::Near16,
@@ -629,7 +629,7 @@ pub struct PointerAttributes {
 }
 
 impl TryFrom<pdb::PointerAttributes> for PointerAttributes {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(attr: pdb::PointerAttributes) -> Result<Self, Self::Error> {
         let attr = PointerAttributes {
             kind: attr.pointer_kind().try_into()?,
@@ -653,7 +653,7 @@ pub struct Primitive {
 }
 
 impl TryFrom<&pdb::PrimitiveType> for Primitive {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(typ: &pdb::PrimitiveType) -> Result<Self, Self::Error> {
         let pdb::PrimitiveType { kind, indirection } = typ;
 
@@ -688,7 +688,7 @@ pub enum Indirection {
 }
 
 impl TryFrom<pdb::Indirection> for Indirection {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(kind: pdb::Indirection) -> Result<Self, Self::Error> {
         let kind = match kind {
             pdb::Indirection::Near16 => Indirection::Near16,
@@ -762,7 +762,7 @@ pub enum PrimitiveKind {
 }
 
 impl TryFrom<&pdb::PrimitiveKind> for PrimitiveKind {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(kind: &pdb::PrimitiveKind) -> Result<Self, Self::Error> {
         let kind = match *kind {
             pdb::PrimitiveKind::NoType => PrimitiveKind::NoType,
@@ -807,7 +807,7 @@ impl TryFrom<&pdb::PrimitiveKind> for PrimitiveKind {
             pdb::PrimitiveKind::Bool32 => PrimitiveKind::Bool32,
             pdb::PrimitiveKind::Bool64 => PrimitiveKind::Bool64,
             pdb::PrimitiveKind::HRESULT => PrimitiveKind::HRESULT,
-            other => return Err(ParsingError::UnhandledType(format!("{:?}", other))),
+            other => return Err(Error::UnhandledType(format!("{:?}", other))),
         };
 
         Ok(kind)
@@ -951,7 +951,7 @@ type FromArray<'a, 'b> = (
 );
 
 impl TryFrom<FromArray<'_, '_>> for Array {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromArray<'_, '_>) -> Result<Self, Self::Error> {
         let (array, type_finder, output_pdb) = data;
 
@@ -989,7 +989,7 @@ type FromFieldList<'a, 'b> = (
 );
 
 impl TryFrom<FromFieldList<'_, '_>> for FieldList {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromFieldList<'_, '_>) -> Result<Self, Self::Error> {
         let (fields, type_finder, output_pdb) = data;
 
@@ -1032,7 +1032,7 @@ type FromArgumentList<'a, 'b> = (
 );
 
 impl TryFrom<FromArgumentList<'_, '_>> for ArgumentList {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromArgumentList<'_, '_>) -> Result<Self, Self::Error> {
         let (arguments, type_finder, output_pdb) = data;
 
@@ -1062,7 +1062,7 @@ type FromModifier<'a, 'b> = (
 );
 
 impl TryFrom<FromModifier<'_, '_>> for Modifier {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromModifier<'_, '_>) -> Result<Self, Self::Error> {
         let (modifier, type_finder, output_pdb) = data;
 
@@ -1098,7 +1098,7 @@ type FromMember<'a, 'b> = (
 );
 
 impl TryFrom<FromMember<'_, '_>> for Member {
-    type Error = ParsingError;
+    type Error = Error;
 
     fn try_from(data: FromMember<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
@@ -1133,7 +1133,7 @@ type FromProcedure<'a, 'b> = (
 );
 
 impl TryFrom<FromProcedure<'_, '_>> for Procedure {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromProcedure<'_, '_>) -> Result<Self, Self::Error> {
         let (proc, type_finder, output_pdb) = data;
 
@@ -1180,7 +1180,7 @@ type FromMemberFunction<'a, 'b> = (
 );
 
 impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromMemberFunction<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
@@ -1232,7 +1232,7 @@ type FromMethodList<'a, 'b> = (
 );
 
 impl TryFrom<FromMethodList<'_, '_>> for MethodList {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromMethodList<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
@@ -1259,7 +1259,7 @@ type FromMethodListEntry<'a, 'b> = (
 );
 
 impl TryFrom<FromMethodListEntry<'_, '_>> for MethodListEntry {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromMethodListEntry<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
@@ -1291,7 +1291,7 @@ type FromNested<'a, 'b> = (
 );
 
 impl TryFrom<FromNested<'_, '_>> for Nested {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromNested<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
@@ -1323,7 +1323,7 @@ type FromOverloadedMethod<'a, 'b> = (
 );
 
 impl TryFrom<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromOverloadedMethod<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
@@ -1356,7 +1356,7 @@ type FromMethod<'a, 'b> = (
 );
 
 impl TryFrom<FromMethod<'_, '_>> for Method {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromMethod<'_, '_>) -> Result<Self, Self::Error> {
         let (method_list, type_finder, output_pdb) = data;
 
@@ -1390,7 +1390,7 @@ type FromStaticMember<'a, 'b> = (
 );
 
 impl TryFrom<FromStaticMember<'_, '_>> for StaticMember {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromStaticMember<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 
@@ -1419,7 +1419,7 @@ type FromVirtualFunctionTablePointer<'a, 'b> = (
 );
 
 impl TryFrom<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
-    type Error = ParsingError;
+    type Error = Error;
     fn try_from(data: FromVirtualFunctionTablePointer<'_, '_>) -> Result<Self, Self::Error> {
         let (member, type_finder, output_pdb) = data;
 

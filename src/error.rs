@@ -1,7 +1,7 @@
 use thiserror::Error;
 
 #[derive(Error, Debug)]
-pub enum ParsingError {
+pub enum Error {
     #[error("the PDB parsing library encountered an error: {0}")]
     PdbCrateError(#[from] pdb::Error),
     #[error("dependency `{0}` required for parsing is unavailable")]
@@ -12,4 +12,6 @@ pub enum ParsingError {
     NeedForwardReferenceImplementation,
     #[error("type `{0}` was not handled")]
     UnhandledType(String),
+    #[error("IO error occurred: {0}")]
+    IoError(#[from] std::io::Error),
 }

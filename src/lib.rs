@@ -1,8 +1,9 @@
-use crate::error::ParsingError;
+use crate::error::Error;
 use crate::symbol_types::*;
-use anyhow::Result;
 use log::{debug, warn};
-use pdb::*;
+use pdb::{
+    AddressMap, FallibleIterator, IdIndex, ItemFinder, Symbol, SymbolData, TypeData, TypeIndex, PDB,
+};
 use std::cell::RefCell;
 use std::convert::TryInto;
 use std::fs::File;
@@ -15,7 +16,10 @@ pub mod type_info;
 
 pub use crate::symbol_types::ParsedPdb;
 
-pub fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
+pub fn parse_pdb<P: AsRef<Path>>(
+    path: P,
+    base_address: Option<usize>,
+) -> Result<ParsedPdb, crate::error::Error> {
     let file = File::open(path.as_ref())?;
     debug!("opening PDB");
     let mut pdb = Box::new(PDB::open(file)?);
@@ -62,7 +66,7 @@ pub fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result
     for typ in discovered_types.iter() {
         let typ = match handle_type(*typ, &mut output_pdb, &type_finder) {
             Ok(typ) => typ,
-            Err(ParsingError::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
+            Err(Error::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
                 warn!("Could not parse type: {}", e);
                 continue;
             }
@@ -143,7 +147,7 @@ fn handle_symbol(
     type_finder: &ItemFinder<'_, TypeIndex>,
     id_finder: Option<&ItemFinder<'_, IdIndex>>,
     base_address: Option<usize>,
-) -> Result<(), ParsingError> {
+) -> Result<(), Error> {
     let base_address = base_address.unwrap_or(0);
     let sym = sym.parse()?;
 
@@ -187,7 +191,7 @@ pub(crate) fn handle_type(
     idx: pdb::TypeIndex,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
-) -> Result<TypeRef, ParsingError> {
+) -> Result<TypeRef, Error> {
     use crate::type_info::{Class, Type, Union};
     let typ = type_finder.find(idx).expect("failed to resolve type");
     if let Some(typ) = output_pdb.types.get(&idx.0) {
@@ -208,7 +212,7 @@ pub(crate) fn handle_type_data(
     typ: &pdb::TypeData,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
-) -> Result<TypeRef, ParsingError> {
+) -> Result<TypeRef, Error> {
     use crate::type_info::{Class, Type};
     let typ = match typ {
         TypeData::Class(data) => {
