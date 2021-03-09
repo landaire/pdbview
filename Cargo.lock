@@ -75,6 +75,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "ezpdb"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "pdb",
+ "serde",
+ "serde_json",
+ "simplelog",
+ "structopt",
+ "thiserror",
+]
+
+[[package]]
 name = "fallible-iterator"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -153,20 +167,6 @@ dependencies = [
  "fallible-iterator",
  "scroll",
  "uuid",
-]
-
-[[package]]
-name = "pdbview"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "log",
- "pdb",
- "serde",
- "serde_json",
- "simplelog",
- "structopt",
- "thiserror",
 ]
 
 [[package]]

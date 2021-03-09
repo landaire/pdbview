@@ -13,6 +13,8 @@ pub mod error;
 pub mod symbol_types;
 pub mod type_info;
 
+pub use crate::symbol_types::ParsedPdb;
+
 pub fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
     let file = File::open(path.as_ref())?;
     debug!("opening PDB");
