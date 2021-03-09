@@ -1,5 +1,5 @@
-use crate::symbol_types::ParsedPdb;
-use crate::type_info::Type;
+use ezpdb::symbol_types::*;
+use ezpdb::type_info::*;
 use log::{debug, warn};
 use std::io::{self, Write};
 
@@ -16,7 +16,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
     if let Some(compiler_info) = &pdb_info.assembly_info.compiler_info {
         writeln!(output, "\t\tLanguage: {}", compiler_info.language)?;
 
-        let crate::symbol_types::CompileFlags {
+        let CompileFlags {
             edit_and_continue,
             no_debug_info,
             link_time_codegen,
@@ -117,7 +117,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
             width = width
         )?;
         writeln!(output, "\t\tCPU type: {}", compiler_info.cpu_type,)?;
-        let crate::symbol_types::CompilerVersion {
+        let CompilerVersion {
             major,
             minor,
             build,
@@ -133,7 +133,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                 .unwrap_or_else(|| "None".to_string())
         )?;
 
-        let crate::symbol_types::CompilerVersion {
+        let CompilerVersion {
             major,
             minor,
             build,
@@ -201,8 +201,6 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
 
     let width = 20usize;
     for ty in pdb_info.types.values() {
-        use crate::type_info::*;
-
         let ty: &Type = &*ty.as_ref().borrow();
         match ty {
             Type::Class(class) => {

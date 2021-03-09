@@ -183,7 +183,7 @@ impl TryFrom<FromClass<'_, '_>> for Class {
             .map(|type_index| {
                 // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
                 if let Type::FieldList(fields) =
-                    &*crate::parse::handle_type(type_index, output_pdb, type_finder)
+                    &*crate::handle_type(type_index, output_pdb, type_finder)
                         .expect("failed to resolve dependent type")
                         .as_ref()
                         .borrow()
@@ -196,7 +196,7 @@ impl TryFrom<FromClass<'_, '_>> for Class {
             .unwrap_or_default();
 
         let derived_from = derived_from.map(|type_index| {
-            crate::parse::handle_type(type_index, output_pdb, type_finder)
+            crate::handle_type(type_index, output_pdb, type_finder)
                 .expect("failed to resolve dependent type")
         });
 
@@ -238,7 +238,7 @@ impl TryFrom<FromBaseClass<'_, '_>> for BaseClass {
             offset,
         } = *class;
 
-        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)?;
+        let base_class = crate::handle_type(base_class, output_pdb, type_finder)?;
 
         Ok(BaseClass {
             kind: kind.try_into()?,
@@ -277,9 +277,9 @@ impl TryFrom<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
             virtual_base_offset,
         } = *class;
 
-        let base_class = crate::parse::handle_type(base_class, output_pdb, type_finder)
+        let base_class = crate::handle_type(base_class, output_pdb, type_finder)
             .expect("failed to resolve underlying type");
-        let base_pointer = crate::parse::handle_type(base_pointer, output_pdb, type_finder)
+        let base_pointer = crate::handle_type(base_pointer, output_pdb, type_finder)
             .expect("failed to resolve underlying type");
 
         Ok(VirtualBaseClass {
@@ -369,7 +369,7 @@ impl TryFrom<FromUnion<'_, '_>> for Union {
             unique_name,
         } = union;
 
-        let fields = crate::parse::handle_type(*fields, output_pdb, type_finder)?;
+        let fields = crate::handle_type(*fields, output_pdb, type_finder)?;
 
         // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
         let fields = if *count > 0 {
@@ -419,7 +419,7 @@ impl TryFrom<FromBitfield<'_, '_>> for Bitfield {
             position,
         } = *bitfield;
 
-        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)?;
+        let underlying_type = crate::handle_type(underlying_type, output_pdb, type_finder)?;
 
         Ok(Bitfield {
             underlying_type,
@@ -463,7 +463,7 @@ impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
             unique_name,
         } = e;
 
-        let underlying_type = crate::parse::handle_type(*underlying_type, output_pdb, type_finder)?;
+        let underlying_type = crate::handle_type(*underlying_type, output_pdb, type_finder)?;
         // TODO: Variants
 
         Ok(Enumeration {
@@ -556,8 +556,7 @@ impl TryFrom<FromPointer<'_, '_>> for Pointer {
             containing_class,
         } = *pointer;
 
-        let underlying_type =
-            crate::parse::handle_type(underlying_type, output_pdb, type_finder).ok();
+        let underlying_type = crate::handle_type(underlying_type, output_pdb, type_finder).ok();
 
         Ok(Pointer {
             underlying_type,
@@ -808,6 +807,7 @@ impl TryFrom<&pdb::PrimitiveKind> for PrimitiveKind {
             pdb::PrimitiveKind::Bool32 => PrimitiveKind::Bool32,
             pdb::PrimitiveKind::Bool64 => PrimitiveKind::Bool64,
             pdb::PrimitiveKind::HRESULT => PrimitiveKind::HRESULT,
+            other => return Err(ParsingError::UnhandledType(format!("{:?}", other))),
         };
 
         Ok(kind)
@@ -962,8 +962,8 @@ impl TryFrom<FromArray<'_, '_>> for Array {
             dimensions,
         } = array;
 
-        let element_type = crate::parse::handle_type(*element_type, output_pdb, type_finder)?;
-        let indexing_type = crate::parse::handle_type(*indexing_type, output_pdb, type_finder)?;
+        let element_type = crate::handle_type(*element_type, output_pdb, type_finder)?;
+        let indexing_type = crate::handle_type(*indexing_type, output_pdb, type_finder)?;
         let size = *dimensions.last().unwrap() as usize;
 
         let arr = Array {
@@ -1000,13 +1000,13 @@ impl TryFrom<FromFieldList<'_, '_>> for FieldList {
 
         let result_fields: Result<Vec<TypeRef>, Self::Error> = fields
             .iter()
-            .map(|typ| crate::parse::handle_type_data(typ, output_pdb, type_finder))
+            .map(|typ| crate::handle_type_data(typ, output_pdb, type_finder))
             .collect();
 
         let mut result_fields = result_fields?;
 
         if let Some(continuation) = continuation {
-            let field = crate::parse::handle_type(*continuation, output_pdb, type_finder)?;
+            let field = crate::handle_type(*continuation, output_pdb, type_finder)?;
             let field = field.as_ref().borrow();
             if let Type::FieldList(fields) = &*field {
                 result_fields.append(&mut fields.0.clone())
@@ -1040,7 +1040,7 @@ impl TryFrom<FromArgumentList<'_, '_>> for ArgumentList {
 
         let arguments: Result<Vec<TypeRef>, Self::Error> = arguments
             .iter()
-            .map(|typ| crate::parse::handle_type(*typ, output_pdb, type_finder))
+            .map(|typ| crate::handle_type(*typ, output_pdb, type_finder))
             .collect();
 
         Ok(ArgumentList(arguments?))
@@ -1073,7 +1073,7 @@ impl TryFrom<FromModifier<'_, '_>> for Modifier {
             unaligned,
         } = *modifier;
 
-        let underlying_type = crate::parse::handle_type(underlying_type, output_pdb, type_finder)?;
+        let underlying_type = crate::handle_type(underlying_type, output_pdb, type_finder)?;
 
         Ok(Modifier {
             underlying_type,
@@ -1110,7 +1110,7 @@ impl TryFrom<FromMember<'_, '_>> for Member {
             name,
         } = *member;
 
-        let underlying_type = crate::parse::handle_type(field_type, output_pdb, type_finder)?;
+        let underlying_type = crate::handle_type(field_type, output_pdb, type_finder)?;
 
         Ok(Member {
             name: name.to_string().into_owned(),
@@ -1145,11 +1145,11 @@ impl TryFrom<FromProcedure<'_, '_>> for Procedure {
         } = *proc;
 
         let return_type = return_type
-            .map(|return_type| crate::parse::handle_type(return_type, output_pdb, type_finder))
+            .map(|return_type| crate::handle_type(return_type, output_pdb, type_finder))
             .transpose()?;
 
         let arguments: Vec<TypeRef>;
-        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)?;
+        let field = crate::handle_type(argument_list, output_pdb, type_finder)?;
         if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
@@ -1194,16 +1194,16 @@ impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
             this_adjustment,
         } = *member;
 
-        let return_type = crate::parse::handle_type(return_type, output_pdb, type_finder)?;
+        let return_type = crate::handle_type(return_type, output_pdb, type_finder)?;
 
-        let class_type = crate::parse::handle_type(class_type, output_pdb, type_finder)?;
+        let class_type = crate::handle_type(class_type, output_pdb, type_finder)?;
 
         let this_pointer_type = this_pointer_type
-            .map(|ptr_type| crate::parse::handle_type(ptr_type, output_pdb, type_finder))
+            .map(|ptr_type| crate::handle_type(ptr_type, output_pdb, type_finder))
             .transpose()?;
 
         let arguments: Vec<TypeRef>;
-        let field = crate::parse::handle_type(argument_list, output_pdb, type_finder)?;
+        let field = crate::handle_type(argument_list, output_pdb, type_finder)?;
         if let Type::ArgumentList(argument_list) = &*field.as_ref().borrow() {
             arguments = argument_list.0.clone();
         } else {
@@ -1269,7 +1269,7 @@ impl TryFrom<FromMethodListEntry<'_, '_>> for MethodListEntry {
             vtable_offset,
         } = *method_list;
 
-        let method_type = crate::parse::handle_type(method_type, output_pdb, type_finder)?;
+        let method_type = crate::handle_type(method_type, output_pdb, type_finder)?;
 
         Ok(MethodListEntry {
             method_type,
@@ -1301,7 +1301,7 @@ impl TryFrom<FromNested<'_, '_>> for Nested {
             name,
         } = *method_list;
 
-        let nested_type = crate::parse::handle_type(nested_type, output_pdb, type_finder)?;
+        let nested_type = crate::handle_type(nested_type, output_pdb, type_finder)?;
 
         Ok(Nested {
             name: name.to_string().into_owned(),
@@ -1333,7 +1333,7 @@ impl TryFrom<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
             name,
         } = method_list;
 
-        let method_list = crate::parse::handle_type(*method_list, output_pdb, type_finder)?;
+        let method_list = crate::handle_type(*method_list, output_pdb, type_finder)?;
 
         Ok(OverloadedMethod {
             name: name.to_string().into_owned(),
@@ -1367,7 +1367,7 @@ impl TryFrom<FromMethod<'_, '_>> for Method {
             name,
         } = method_list;
 
-        let method_type = crate::parse::handle_type(*method_type, output_pdb, type_finder)?;
+        let method_type = crate::handle_type(*method_type, output_pdb, type_finder)?;
 
         Ok(Method {
             name: name.to_string().into_owned(),
@@ -1400,7 +1400,7 @@ impl TryFrom<FromStaticMember<'_, '_>> for StaticMember {
             name,
         } = member;
 
-        let field_type = crate::parse::handle_type(*field_type, output_pdb, type_finder)
+        let field_type = crate::handle_type(*field_type, output_pdb, type_finder)
             .expect("failed to parse dependent type");
 
         Ok(StaticMember {
@@ -1425,7 +1425,7 @@ impl TryFrom<FromVirtualFunctionTablePointer<'_, '_>> for VTable {
 
         let pdb::VirtualFunctionTablePointerType { table } = *member;
 
-        let vtable_type = crate::parse::handle_type(table, output_pdb, type_finder)
+        let vtable_type = crate::handle_type(table, output_pdb, type_finder)
             .expect("failed to parse dependent type");
 
         Ok(VTable(vtable_type))

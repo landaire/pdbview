@@ -9,7 +9,11 @@ use std::fs::File;
 use std::path::Path;
 use std::rc::Rc;
 
-pub(crate) fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
+pub mod error;
+pub mod symbol_types;
+pub mod type_info;
+
+pub fn parse_pdb<P: AsRef<Path>>(path: P, base_address: Option<usize>) -> Result<ParsedPdb> {
     let file = File::open(path.as_ref())?;
     debug!("opening PDB");
     let mut pdb = Box::new(PDB::open(file)?);
@@ -177,7 +181,7 @@ fn handle_symbol(
 /// Converts a [pdb::SymbolData] object to a parsed symbol representation that
 /// we can serialize and adds it to the appropriate fields on the output [ParsedPdb].
 /// Errors returned from this function should not be considered fatal.
-pub fn handle_type(
+pub(crate) fn handle_type(
     idx: pdb::TypeIndex,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,
@@ -198,7 +202,7 @@ pub fn handle_type(
     Ok(typ)
 }
 
-pub fn handle_type_data(
+pub(crate) fn handle_type_data(
     typ: &pdb::TypeData,
     output_pdb: &mut ParsedPdb,
     type_finder: &ItemFinder<'_, TypeIndex>,

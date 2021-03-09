@@ -170,6 +170,7 @@ impl From<pdb::CompileFlags> for CompileFlags {
             sdl,
             pgo,
             exp_module,
+            ..
         } = flags;
 
         CompileFlags {

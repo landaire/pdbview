@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 use std::str::FromStr;
 use structopt::StructOpt;
+use thiserror::Error;
 
-mod error;
 mod output;
-mod parse;
-mod symbol_types;
-mod type_info;
+
+#[derive(Error, Debug)]
+pub enum CliArgumentError {
+    #[error("the value `{1}` is not valid for the parameter `{0}`")]
+    InvalidValue(&'static str, String),
+}
 
 #[derive(StructOpt, Debug)]
 #[structopt(name = "pdbview")]
@@ -36,18 +39,13 @@ enum OutputFormatType {
 }
 
 impl FromStr for OutputFormatType {
-    type Err = error::CliArgumentError;
+    type Err = CliArgumentError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let result = match s.to_ascii_lowercase().as_ref() {
             "plain" => OutputFormatType::Plain,
             "json" => OutputFormatType::Json,
-            _ => {
-                return Err(error::CliArgumentError::InvalidValue(
-                    "format",
-                    s.to_string(),
-                ))
-            }
+            _ => return Err(CliArgumentError::InvalidValue("format", s.to_string())),
         };
 
         Ok(result)
@@ -61,7 +59,7 @@ fn main() -> anyhow::Result<()> {
         simplelog::SimpleLogger::init(log::LevelFilter::Debug, simplelog::Config::default())?;
     }
 
-    let parsed_pdb = parse::parse_pdb(&opt.file, opt.base_address)?;
+    let parsed_pdb = ezpdb::parse_pdb(&opt.file, opt.base_address)?;
     let stdout = std::io::stdout();
     let mut stdout_lock = stdout.lock();
 
