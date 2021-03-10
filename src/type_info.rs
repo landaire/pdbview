@@ -369,21 +369,22 @@ impl TryFrom<FromUnion<'_, '_>> for Union {
             unique_name,
         } = union;
 
-        let fields = crate::handle_type(*fields, output_pdb, type_finder)?;
-
-        // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
-        let fields = if *count > 0 {
-            if let Type::FieldList(fields) = &*fields.as_ref().borrow() {
-                fields.0.clone()
-            } else {
-                panic!(
-                "got an unexpected type when FieldList was expected. union: {:#?}\n fields: {:#?}",
-                union, fields
-            );
+        let fields_type = crate::handle_type(*fields, output_pdb, type_finder)?;
+        let fields;
+        if *count > 0 {
+            let borrowed_fields = fields_type.as_ref().borrow();
+            match &*borrowed_fields {
+                Type::FieldList(fields_list) => {
+                    fields = fields_list.0.clone();
+                }
+                _ => {
+                    drop(borrowed_fields);
+                    fields = vec![fields_type];
+                }
             }
         } else {
-            vec![]
-        };
+            fields = vec![];
+        }
 
         let mut union = Union {
             name: name.to_string().into_owned(),

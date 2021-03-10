@@ -345,11 +345,11 @@ impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for Publ
 
 #[derive(Debug, Serialize)]
 pub struct Data {
-    name: String,
+    pub name: String,
 
-    typ: Rc<Type>,
+    pub typ: Rc<Type>,
 
-    offset: usize,
+    pub offset: usize,
 }
 
 #[derive(Debug, Serialize)]
