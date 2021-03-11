@@ -40,7 +40,6 @@ pdbview example.pdb
 
 ## TODO
 
-- Type information
 - Global data information (depends on Types)
 
 ## Example Output 
