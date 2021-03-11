@@ -216,6 +216,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                     class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
                     width = 10
                 )?;
+                writeln!(output, "\tSize: 0x{:X}", class.size)?;
                 // writeln!(
                 //     output,
                 //     "\t\t{:width$} {}",
