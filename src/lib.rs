@@ -70,7 +70,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
                 warn!("Could not parse type: {}", e);
                 continue;
             }
-            Err(e) => return Err(e.into()),
+            Err(e) => return Err(e),
         };
     }
 

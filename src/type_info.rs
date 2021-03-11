@@ -137,7 +137,7 @@ impl Typed for Class {
     fn type_size(&self, pdb: &ParsedPdb) -> usize {
         if self.properties.forward_reference {
             // Find the implementation
-            for (_key, value) in &pdb.types {
+            for value in pdb.types.values() {
                 if let Ok(borrow) = value.as_ref().try_borrow() {
                     if let Type::Class(class) = &*borrow {
                         if !class.properties.forward_reference
