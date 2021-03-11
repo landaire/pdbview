@@ -619,14 +619,14 @@ impl Typed for PointerKind {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PointerAttributes {
-    kind: PointerKind,
-    is_volatile: bool,
-    is_const: bool,
-    is_unaligned: bool,
-    is_restrict: bool,
-    is_reference: bool,
-    size: usize,
-    is_mocom: bool,
+    pub kind: PointerKind,
+    pub is_volatile: bool,
+    pub is_const: bool,
+    pub is_unaligned: bool,
+    pub is_restrict: bool,
+    pub is_reference: bool,
+    pub size: usize,
+    pub is_mocom: bool,
 }
 
 impl TryFrom<pdb::PointerAttributes> for PointerAttributes {
