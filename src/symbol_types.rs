@@ -1,6 +1,7 @@
 use crate::type_info::Type;
 use log::warn;
 use pdb::FallibleIterator;
+#[cfg(feature = "serde")]
 use serde::Serialize;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -11,7 +12,8 @@ use std::rc::Rc;
 pub type TypeRef = Rc<RefCell<Type>>;
 pub type TypeIndexNumber = u32;
 /// Represents a PDB that has been fully parsed
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct ParsedPdb {
     pub path: PathBuf,
     pub assembly_info: AssemblyInfo,
@@ -20,7 +22,7 @@ pub struct ParsedPdb {
     pub procedures: Vec<Procedure>,
     pub global_data: Vec<Data>,
     pub debug_modules: Vec<DebugModule>,
-    #[serde(skip_serializing)]
+    #[cfg_attr(feature = "serde", serde(skip_serializing))]
     pub(crate) forward_references: Vec<Rc<Type>>,
 }
 
@@ -40,13 +42,15 @@ impl ParsedPdb {
     }
 }
 
-#[derive(Debug, Default, Serialize)]
+#[derive(Debug, Default)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct AssemblyInfo {
     pub build_info: Option<BuildInfo>,
     pub compiler_info: Option<CompilerInfo>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BuildInfo {
     arguments: Vec<String>,
 }
@@ -94,7 +98,8 @@ impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo 
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompilerInfo {
     // TODO: cpu_type, flags, language
     pub language: String,
@@ -127,7 +132,8 @@ impl From<pdb::CompileFlagsSymbol<'_>> for CompilerInfo {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompileFlags {
     /// Compiled for edit and continue.
     pub edit_and_continue: bool,
@@ -190,7 +196,8 @@ impl From<pdb::CompileFlags> for CompileFlags {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct CompilerVersion {
     pub major: u16,
     pub minor: u16,
@@ -216,14 +223,16 @@ impl From<pdb::CompilerVersion> for CompilerVersion {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct DebugModule {
     name: String,
     object_file_name: String,
     source_files: Option<Vec<FileInfo>>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 enum Checksum {
     None,
     Md5(Vec<u8>),
@@ -242,7 +251,8 @@ impl From<pdb::FileChecksum<'_>> for Checksum {
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FileInfo {
     name: String,
     checksum: Checksum,
@@ -296,7 +306,8 @@ impl
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct PublicSymbol {
     pub name: String,
     pub is_code: bool,
@@ -343,7 +354,8 @@ impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for Publ
     }
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Data {
     pub name: String,
 
@@ -352,7 +364,8 @@ pub struct Data {
     pub offset: usize,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Procedure {
     pub name: String,
 
