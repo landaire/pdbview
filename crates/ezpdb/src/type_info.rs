@@ -1149,6 +1149,7 @@ impl TryFrom<FromMember<'_, '_>> for Member {
 pub struct Procedure {
     pub return_type: Option<TypeRef>,
     pub argument_list: Vec<TypeRef>,
+    pub attributes: FunctionAttributes,
 }
 
 type FromProcedure<'a, 'b> = (
@@ -1187,6 +1188,7 @@ impl TryFrom<FromProcedure<'_, '_>> for Procedure {
         Ok(Procedure {
             return_type,
             argument_list: arguments,
+            attributes: attributes.try_into()?,
         })
     }
 }
