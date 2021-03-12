@@ -23,11 +23,6 @@ structopt = "0.3"
 thiserror = "1.0"
 log = "0.4"
 ezpdb = { version = "0.1", path = "crates/ezpdb", features = ['serde']}
-simplelog = { version = "0.8", optional = true }
-anyhow = { version = "1.0", optional = true }
-serde = { version = "1.0", features = ['derive', 'rc'], optional = true }
-serde_json = { version = "1.0", optional = true }
-
-[features]
-default = ["cli", "serde"]
-cli = ["serde_json", "anyhow", "simplelog"]
+simplelog = "0.8"
+anyhow = "1.0"
+serde_json = "1.0"

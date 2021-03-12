@@ -171,7 +171,6 @@ dependencies = [
  "ezpdb",
  "log",
  "pdb",
- "serde",
  "serde_json",
  "simplelog",
  "structopt",
