@@ -1190,13 +1190,37 @@ impl TryFrom<FromProcedure<'_, '_>> for Procedure {
         })
     }
 }
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub struct FunctionAttributes {
+    pub calling_convention: u8,
+    pub cxx_return_udt: bool,
+    pub is_constructor: bool,
+    pub is_constructor_with_virtual_bases: bool,
+}
+
+impl TryFrom<pdb::FunctionAttributes> for FunctionAttributes {
+    type Error = Error;
+    fn try_from(data: pdb::FunctionAttributes) -> Result<Self, Self::Error> {
+        Ok(FunctionAttributes {
+            calling_convention: data.calling_convention(),
+            cxx_return_udt: data.cxx_return_udt(),
+            is_constructor: data.is_constructor(),
+            is_constructor_with_virtual_bases: data.is_constructor_with_virtual_bases(),
+        })
+    }
+}
+
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct MemberFunction {
-    return_type: TypeRef,
-    class_type: TypeRef,
-    this_pointer_type: Option<TypeRef>,
-    argument_list: Vec<TypeRef>,
+    pub return_type: TypeRef,
+    pub class_type: TypeRef,
+    pub this_pointer_type: Option<TypeRef>,
+    pub argument_list: Vec<TypeRef>,
+    pub attributes: FunctionAttributes,
+    pub this_adjustment: u32,
 }
 
 type FromMemberFunction<'a, 'b> = (
@@ -1244,6 +1268,8 @@ impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
             class_type,
             this_pointer_type,
             argument_list: arguments,
+            attributes: attributes.try_into()?,
+            this_adjustment,
         })
     }
 }

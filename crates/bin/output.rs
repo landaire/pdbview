@@ -287,10 +287,12 @@ fn format_type_name(ty: &Type) -> String {
         ),
         Type::Pointer(pointer) => {
             // TODO: Attributes
-            format!(
-                "{}*",
-                format_type_name(&*pointer.underlying_type.as_ref().unwrap().as_ref().borrow())
-            )
+            match pointer.underlying_type.as_ref() {
+                Some(underlying_type) => {
+                    format!("{}*", format_type_name(&*underlying_type.as_ref().borrow()))
+                }
+                None => "<UNRESOLVED_POINTER_TYPE>".to_string(),
+            }
         }
         Type::Primitive(primitive) => format!("{}", primitive.kind),
         Type::Modifier(modifier) => format_type_name(&*modifier.underlying_type.as_ref().borrow()),
@@ -314,6 +316,23 @@ fn format_type_name(ty: &Type) -> String {
                 })
         ),
         Type::Enumeration(e) => e.name.clone(),
+        Type::MemberFunction(member) => {
+            format!(
+                "{} (*function){}",
+                format_type_name(&*member.return_type.as_ref().borrow()),
+                member
+                    .argument_list
+                    .iter()
+                    .fold(String::new(), |accum, argument| {
+                        format!(
+                            "{}{}{}",
+                            &accum,
+                            if accum.is_empty() { "" } else { "," },
+                            format_type_name(&*argument.as_ref().borrow())
+                        )
+                    })
+            )
+        }
         other => panic!("unimplemented type format: {:?}", other),
     }
 }
