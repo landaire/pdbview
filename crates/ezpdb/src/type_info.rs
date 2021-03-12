@@ -183,12 +183,11 @@ impl TryFrom<FromClass<'_, '_>> for Class {
             unique_name,
         } = *class;
 
-        let fields: Vec<TypeRef> = fields
-            .map(|type_index| {
+        let fields: Vec<TypeRef> = match fields {
+            Some(type_index) => {
                 // TODO: perhaps change FieldList to Rc<Vec<TypeRef>?
                 if let Type::FieldList(fields) =
-                    &*crate::handle_type(type_index, output_pdb, type_finder)
-                        .expect("failed to resolve dependent type")
+                    &*crate::handle_type(type_index, output_pdb, type_finder)?
                         .as_ref()
                         .borrow()
                 {
@@ -196,8 +195,9 @@ impl TryFrom<FromClass<'_, '_>> for Class {
                 } else {
                     panic!("got an unexpected type when FieldList was expected")
                 }
-            })
-            .unwrap_or_default();
+            }
+            None => vec![],
+        };
 
         let derived_from = derived_from.map(|type_index| {
             crate::handle_type(type_index, output_pdb, type_finder)

@@ -64,10 +64,17 @@ pub fn parse_pdb<P: AsRef<Path>>(
     }
 
     for typ in discovered_types.iter() {
-        let typ = match handle_type(*typ, &mut output_pdb, &type_finder) {
+        let _typ = match handle_type(*typ, &mut output_pdb, &type_finder) {
             Ok(typ) => typ,
             Err(Error::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
                 warn!("Could not parse type: {}", e);
+                continue;
+            }
+            // TypeNotFound is commonly raised because the PDB spec is not open, so
+            // some types are unknown to this crate. We can ignore these and just fail
+            // any type depending on something we cannot resolve.
+            Err(Error::PdbCrateError(e @ pdb::Error::TypeNotFound(_))) => {
+                warn!("{}", e);
                 continue;
             }
             Err(e) => return Err(e),
