@@ -2,6 +2,12 @@
 
 dumps a lot of information from PDBs
 
+## Installation
+
+```
+cargo install pdbview
+```
+
 ## Usage
 
 ```
