@@ -1,25 +1,28 @@
 [package]
-name = "ezpdb"
+name = "pdbview"
 version = "0.1.0"
 authors = ["Lander Brandt <landerbrandt@gmail.com>"]
 edition = "2018"
 license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[lib]
-name = "ezpdb"
-path = "src/lib.rs"
+readme = "README.md"
+repository = "https://github.com/landaire/pdbview"
+description = "Microsoft program database (PDB) file information utility"
 
 [[bin]]
 name = "pdbview"
-path = "src/bin.rs"
+path = "crates/bin/main.rs"
+
+[workspace]
+members = [
+    'crates/ezpdb'
+]
 
 [dependencies]
 pdb = "0.7"
 structopt = "0.3"
 thiserror = "1.0"
 log = "0.4"
+ezpdb = { version = "0.1", path = "crates/ezpdb", features = ['serde']}
 simplelog = { version = "0.8", optional = true }
 anyhow = { version = "1.0", optional = true }
 serde = { version = "1.0", features = ['derive', 'rc'], optional = true }
