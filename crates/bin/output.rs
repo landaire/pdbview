@@ -63,7 +63,7 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
         writeln!(
             output,
             "\t\t\t{:width$} {}",
-            "Manged code or data is present:",
+            "Managed code or data is present:",
             managed,
             width = width
         )?;
