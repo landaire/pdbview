@@ -43,10 +43,8 @@ pdbview example.pdb
 - Source file names and checksums
 - Compiler information
 - Procedure information
-
-## TODO
-
-- Global data information (depends on Types)
+- Type information
+- Globals
 
 ## Example Output 
 

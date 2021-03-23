@@ -1,6 +1,6 @@
 [package]
 name = "pdbview"
-version = "0.1.2"
+version = "0.2.0"
 authors = ["Lander Brandt <landerbrandt@gmail.com>"]
 edition = "2018"
 license = "MIT"
