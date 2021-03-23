@@ -256,11 +256,11 @@ impl TryFrom<FromBaseClass<'_, '_>> for BaseClass {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct VirtualBaseClass {
-    direct: bool,
-    base_class: TypeRef,
-    base_pointer: TypeRef,
-    base_pointer_offset: usize,
-    virtual_base_offset: usize,
+    pub direct: bool,
+    pub base_class: TypeRef,
+    pub base_pointer: TypeRef,
+    pub base_pointer_offset: usize,
+    pub virtual_base_offset: usize,
 }
 
 type FromVirtualBaseClass<'a, 'b> = (
@@ -298,7 +298,7 @@ impl TryFrom<FromVirtualBaseClass<'_, '_>> for VirtualBaseClass {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum ClassKind {
     Class,
@@ -378,23 +378,20 @@ impl TryFrom<FromUnion<'_, '_>> for Union {
         } = union;
 
         let fields_type = crate::handle_type(*fields, output_pdb, type_finder)?;
+
         let fields;
-        if *count > 0 {
-            let borrowed_fields = fields_type.as_ref().borrow();
-            match &*borrowed_fields {
-                Type::FieldList(fields_list) => {
-                    fields = fields_list.0.clone();
-                }
-                _ => {
-                    drop(borrowed_fields);
-                    fields = vec![fields_type];
-                }
+        let borrowed_fields = fields_type.as_ref().borrow();
+        match &*borrowed_fields {
+            Type::FieldList(fields_list) => {
+                fields = fields_list.0.clone();
             }
-        } else {
-            fields = vec![];
+            _ => {
+                drop(borrowed_fields);
+                fields = vec![fields_type];
+            }
         }
 
-        let mut union = Union {
+        let union = Union {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             properties: (*properties).try_into()?,
@@ -489,8 +486,8 @@ impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct EnumVariant {
-    name: String,
-    value: VariantValue,
+    pub name: String,
+    pub value: VariantValue,
 }
 
 type FromEnumerate<'a, 'b> = &'b pdb::EnumerateType<'a>;
@@ -579,7 +576,7 @@ impl TryFrom<FromPointer<'_, '_>> for Pointer {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum PointerKind {
     Near16,
@@ -733,7 +730,7 @@ impl Typed for Indirection {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum PrimitiveKind {
     NoType,
@@ -862,19 +859,27 @@ impl Typed for PrimitiveKind {
             | PrimitiveKind::F32
             | PrimitiveKind::F32PP
             | PrimitiveKind::Bool32
-            | PrimitiveKind::HRESULT => 4,
+            | PrimitiveKind::HRESULT
+            | PrimitiveKind::Complex32 => 4,
+
+            PrimitiveKind::F48 => 6,
 
             PrimitiveKind::Quad
             | PrimitiveKind::UQuad
             | PrimitiveKind::I64
             | PrimitiveKind::U64
             | PrimitiveKind::F64
-            | PrimitiveKind::Bool64 => 8,
+            | PrimitiveKind::Bool64
+            | PrimitiveKind::Complex64 => 8,
+
             PrimitiveKind::Octa
             | PrimitiveKind::UOcta
             | PrimitiveKind::I128
             | PrimitiveKind::U128 => 16,
-            _ => panic!("type size not handled for type: {:?}", self),
+
+            PrimitiveKind::F80 | PrimitiveKind::Complex80 => 10,
+
+            PrimitiveKind::F128 | PrimitiveKind::Complex128 => 16,
         }
     }
 }
@@ -1001,7 +1006,7 @@ impl TryFrom<FromArray<'_, '_>> for Array {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
-pub struct FieldList(Vec<TypeRef>);
+pub struct FieldList(pub Vec<TypeRef>);
 
 type FromFieldList<'a, 'b> = (
     &'b pdb::FieldList<'b>,
@@ -1045,7 +1050,7 @@ impl TryFrom<FromFieldList<'_, '_>> for FieldList {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
-pub struct ArgumentList(Vec<TypeRef>);
+pub struct ArgumentList(pub Vec<TypeRef>);
 
 type FromArgumentList<'a, 'b> = (
     &'b pdb::ArgumentList,
@@ -1278,7 +1283,7 @@ impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
 
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
-pub struct MethodList(Vec<MethodListEntry>);
+pub struct MethodList(pub Vec<MethodListEntry>);
 
 type FromMethodList<'a, 'b> = (
     &'b pdb::MethodList,
@@ -1304,8 +1309,8 @@ impl TryFrom<FromMethodList<'_, '_>> for MethodList {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct MethodListEntry {
-    method_type: TypeRef,
-    vtable_offset: Option<usize>,
+    pub method_type: TypeRef,
+    pub vtable_offset: Option<usize>,
 }
 
 type FromMethodListEntry<'a, 'b> = (
@@ -1337,8 +1342,8 @@ impl TryFrom<FromMethodListEntry<'_, '_>> for MethodListEntry {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Nested {
-    name: String,
-    nested_type: TypeRef,
+    pub name: String,
+    pub nested_type: TypeRef,
 }
 
 type FromNested<'a, 'b> = (
@@ -1370,8 +1375,8 @@ impl TryFrom<FromNested<'_, '_>> for Nested {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct OverloadedMethod {
-    name: String,
-    method_list: TypeRef,
+    pub name: String,
+    pub method_list: TypeRef,
 }
 
 type FromOverloadedMethod<'a, 'b> = (
@@ -1403,9 +1408,9 @@ impl TryFrom<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Method {
-    name: String,
-    method_type: TypeRef,
-    vtable_offset: Option<usize>,
+    pub name: String,
+    pub method_type: TypeRef,
+    pub vtable_offset: Option<usize>,
 }
 
 type FromMethod<'a, 'b> = (
@@ -1439,8 +1444,8 @@ impl TryFrom<FromMethod<'_, '_>> for Method {
 #[derive(Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct StaticMember {
-    name: String,
-    field_type: TypeRef,
+    pub name: String,
+    pub field_type: TypeRef,
 }
 
 type FromStaticMember<'a, 'b> = (

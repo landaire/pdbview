@@ -2,7 +2,8 @@ use crate::error::Error;
 use crate::symbol_types::*;
 use log::{debug, warn};
 use pdb::{
-    AddressMap, FallibleIterator, IdIndex, ItemFinder, Symbol, SymbolData, TypeData, TypeIndex, PDB,
+    AddressMap, AnnotationReferenceSymbol, FallibleIterator, IdIndex, ItemFinder, Symbol,
+    SymbolData, TypeData, TypeIndex, PDB,
 };
 use std::cell::RefCell;
 use std::convert::TryInto;
@@ -183,6 +184,19 @@ fn handle_symbol(
             let sym: crate::symbol_types::CompilerInfo = data.into();
             output_pdb.assembly_info.compiler_info = Some(sym);
         }
+        SymbolData::AnnotationReference(annotation) => {
+            debug!("annotation reference: {:?}", annotation);
+
+            // let sym: crate::symbol_types::AnnotationReference = annotation.try_into()?;
+            // output_pdb.annotation_references.push()
+        }
+        SymbolData::Data(data) => {
+            let sym: crate::symbol_types::Data =
+                (data, base_address, address_map, &output_pdb.types).try_into()?;
+            if sym.is_global {
+                output_pdb.global_data.push(sym);
+            }
+        }
         other => {
             warn!("Unhandled SymbolData: {:?}", other);
         }
@@ -200,7 +214,6 @@ pub(crate) fn handle_type(
     type_finder: &ItemFinder<'_, TypeIndex>,
 ) -> Result<TypeRef, Error> {
     use crate::type_info::{Class, Type, Union};
-    let typ = type_finder.find(idx).expect("failed to resolve type");
     if let Some(typ) = output_pdb.types.get(&idx.0) {
         return Ok(Rc::clone(typ));
     }

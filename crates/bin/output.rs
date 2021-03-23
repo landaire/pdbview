@@ -4,6 +4,7 @@ use log::{debug, warn};
 use std::io::{self, Write};
 
 pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<()> {
+    // region: Header info
     // Print header information
     writeln!(output, "{:?}:", &pdb_info.path)?;
 
@@ -154,7 +155,9 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
             compiler_info.version_string
         )?;
     }
+    // endregion
 
+    // region: Public symbols
     writeln!(output, "Public symbols:")?;
     writeln!(output, "\t{:<10} Name", "Offset")?;
     for symbol in &pdb_info.public_symbols {
@@ -166,7 +169,9 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
         }
         writeln!(output, "{}", symbol.name)?;
     }
+    // endregion
 
+    // region: Procedures
     writeln!(output, "Procedures:")?;
     writeln!(
         output,
@@ -195,7 +200,29 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
         )?;
         writeln!(output, "{}", procedure.name)?;
     }
+    // endregion
 
+    // region: Data
+    writeln!(output, "Globals:")?;
+    writeln!(output, "\t{:<10} {:<10}", "Offset", "Name")?;
+
+    for global in &pdb_info.global_data {
+        write!(output, "\t")?;
+        if let Some(offset) = global.offset {
+            write!(output, "0x{:08X} ", offset)?;
+        } else {
+            write!(output, "{:<10} ", "")?;
+        }
+        writeln!(output, "{}", global.name)?;
+
+        let ty: &Type = &*global.ty.as_ref().borrow();
+        writeln!(output, "\t\tType: {}", format_type_name(ty))?;
+        writeln!(output, "\t\tSize: 0x{:X}", ty.type_size(pdb_info))?;
+        writeln!(output, "\t\tIs Managed: {}", global.is_managed)?;
+    }
+    // endregion
+
+    // region: Types
     writeln!(output)?;
     writeln!(output, "Types:")?;
 
@@ -250,22 +277,121 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                         Type::BaseClass(base) => {
                             writeln!(
                                 output,
-                                "\t\t0x{:04X} <BaseClass>  {}",
+                                "\t\t0x{:04X} <BaseClass> {}",
                                 base.offset,
                                 format_type_name(&*base.base_class.as_ref().borrow())
                             )?;
                         }
-                        other => debug!("Unexpected field type present in class: {:?}", other),
+                        Type::VirtualBaseClass(_) => {
+                            // ignore
+                        }
+                        Type::Nested(_nested) => {
+                            // writeln!(
+                            //     output,
+                            //     "\t\t (NestedType) {} {}",
+                            //     nested.name,
+                            //     format_type_name(&*nested.nested_type.as_ref().borrow())
+                            // )?;
+                        }
+                        Type::Method(_) | Type::OverloadedMethod(_) => {
+                            // ignore methods
+                        }
+                        Type::VTable(_) => {
+                            // ignore vtable
+                        }
+                        Type::StaticMember(_) => {
+                            // ignore
+                        }
+                        other => {
+                            debug!("Unexpected field type present in class: {:?}", other)
+                        }
                     }
                 }
             }
-            Type::Union(union) => {}
+            Type::Union(union) => {
+                if union.properties.forward_reference {
+                    continue;
+                }
+
+                writeln!(
+                    output,
+                    "\tUnion {} {}",
+                    union.name,
+                    union.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
+                )?;
+                writeln!(output, "\tSize: 0x{:X}", union.size)?;
+                // writeln!(
+                //     output,
+                //     "\t\t{:width$} {}",
+                //     "Name:",
+                //     class.name,
+                //     width = width
+                // )?;
+                // writeln!(
+                //     output,
+                //     "\t\t{:width$} {}",
+                //     "Unique name:",
+                //     class.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
+                //     width = width
+                // )?;
+                writeln!(output, "\tFields:")?;
+                for field in &union.fields {
+                    let field: &Type = &*field.as_ref().borrow();
+
+                    match field {
+                        Type::Member(member) => {
+                            let member_ty: &Type = &*member.underlying_type.as_ref().borrow();
+                            writeln!(
+                                output,
+                                "\t\t0x{:04X} {:width$} {}",
+                                member.offset,
+                                member.name,
+                                format_type_name(member_ty),
+                                width = width
+                            )?;
+                        }
+                        Type::BaseClass(base) => {
+                            writeln!(
+                                output,
+                                "\t\t0x{:04X} <BaseClass> {}",
+                                base.offset,
+                                format_type_name(&*base.base_class.as_ref().borrow())
+                            )?;
+                        }
+                        Type::VirtualBaseClass(_) => {
+                            // ignore
+                        }
+                        Type::Nested(_nested) => {
+                            // ignore nested types
+                            // writeln!(
+                            //     output,
+                            //     "\t\t (NestedType) {} {}",
+                            //     nested.name,
+                            //     format_type_name(&*nested.nested_type.as_ref().borrow())
+                            // )?;
+                        }
+                        Type::Method(_) | Type::OverloadedMethod(_) => {
+                            // ignore methods
+                        }
+                        Type::VTable(_) => {
+                            // ignore vtable
+                        }
+                        Type::StaticMember(_) => {
+                            // ignore
+                        }
+                        other => {
+                            debug!("Unexpected field type present in class: {:?}", other)
+                        }
+                    }
+                }
+            }
             _ => {
                 continue;
             }
         }
         writeln!(output)?;
     }
+    // endregion
 
     Ok(())
 }
@@ -294,7 +420,28 @@ fn format_type_name(ty: &Type) -> String {
                 None => "<UNRESOLVED_POINTER_TYPE>".to_string(),
             }
         }
-        Type::Primitive(primitive) => format!("{}", primitive.kind),
+        Type::Primitive(primitive) => match primitive.kind {
+            PrimitiveKind::Void => "void".to_string(),
+            PrimitiveKind::Char | PrimitiveKind::RChar => "char".to_string(),
+            PrimitiveKind::UChar => "unsigned char".to_string(),
+
+            PrimitiveKind::I8 => "int8_t".to_string(),
+            PrimitiveKind::U8 => "uint8_t".to_string(),
+            PrimitiveKind::I16 | PrimitiveKind::Short => "int16_t".to_string(),
+            PrimitiveKind::U16 | PrimitiveKind::UShort => "uint16_t".to_string(),
+            PrimitiveKind::I32 | PrimitiveKind::Long => "int32_t".to_string(),
+            PrimitiveKind::U32 | PrimitiveKind::ULong => "uint32_t".to_string(),
+            PrimitiveKind::I64 | PrimitiveKind::Quad => "int64_t".to_string(),
+            PrimitiveKind::U64 | PrimitiveKind::UQuad => "uint64_t".to_string(),
+
+            PrimitiveKind::F32 => "float".to_string(),
+            PrimitiveKind::F64 => "double".to_string(),
+
+            PrimitiveKind::Bool8 => "bool".to_string(),
+            other => {
+                format!("{}", other)
+            }
+        },
         Type::Modifier(modifier) => format_type_name(&*modifier.underlying_type.as_ref().borrow()),
         Type::Bitfield(bitfield) => format!(
             "{}:{}",

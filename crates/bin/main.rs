@@ -60,6 +60,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let parsed_pdb = ezpdb::parse_pdb(&opt.file, opt.base_address)?;
+    assert!(!parsed_pdb.global_data.is_empty());
     let stdout = std::io::stdout();
     let mut stdout_lock = stdout.lock();
 

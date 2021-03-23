@@ -1,6 +1,6 @@
 use crate::type_info::Type;
 use log::warn;
-use pdb::FallibleIterator;
+use pdb::{FallibleIterator, TypeIndex};
 #[cfg(feature = "serde")]
 use serde::Serialize;
 use std::cell::RefCell;
@@ -359,9 +359,65 @@ impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for Publ
 pub struct Data {
     pub name: String,
 
-    pub typ: Rc<Type>,
+    pub is_global: bool,
 
-    pub offset: usize,
+    pub is_managed: bool,
+
+    pub ty: TypeRef,
+
+    pub offset: Option<usize>,
+}
+
+impl
+    TryFrom<(
+        pdb::DataSymbol<'_>,
+        usize,
+        Option<&pdb::AddressMap<'_>>,
+        &HashMap<TypeIndexNumber, TypeRef>,
+    )> for Data
+{
+    type Error = crate::error::Error;
+
+    fn try_from(
+        data: (
+            pdb::DataSymbol<'_>,
+            usize,
+            Option<&pdb::AddressMap<'_>>,
+            &HashMap<TypeIndexNumber, TypeRef>,
+        ),
+    ) -> Result<Self, Self::Error> {
+        let (sym, base_address, address_map, parsed_types) = data;
+
+        let pdb::DataSymbol {
+            global,
+            managed,
+            type_index,
+            offset,
+            name,
+        } = sym;
+
+        let offset = address_map.and_then(|address_map| {
+            offset
+                .to_rva(address_map)
+                .map(|rva| u32::from(rva) as usize + base_address)
+        });
+
+        let ty = Rc::clone(
+            parsed_types
+                .get(&type_index.0)
+                .ok_or(Self::Error::UnresolvedType(type_index.0))?,
+        );
+
+        let data = Data {
+            name: name.to_string().to_string(),
+            is_global: global,
+            is_managed: managed,
+            ty,
+            offset,
+        };
+
+        Ok(data)
+    }
 }
 
 #[derive(Debug)]
