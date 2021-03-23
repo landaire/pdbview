@@ -22,7 +22,7 @@ pdb = "0.7"
 structopt = "0.3"
 thiserror = "1.0"
 log = "0.4"
-ezpdb = { version = "0.1", path = "crates/ezpdb", features = ['serde']}
+ezpdb = { version = "0.2", path = "crates/ezpdb", features = ['serde']}
 simplelog = "0.8"
 anyhow = "1.0"
 serde_json = "1.0"
