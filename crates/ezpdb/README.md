@@ -1,3 +1,6 @@
+[![API Documentation](https://docs.rs/ezpdb/badge.svg)](https://docs.rs/ezpdb)]
+[![crates.io](https://img.shields.io/crates/v/ezpdb.svg)](https://crates.io/crates/ezpdb)
+
 # ezpdb
 
 A high-level library for the fantastic [`pdb`](https://crates.io/crates/pdb) crate

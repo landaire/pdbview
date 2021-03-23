@@ -1,3 +1,7 @@
+[![ezpdb API Documentation](https://docs.rs/ezpdb/badge.svg)](https://docs.rs/ezpdb)]
+[![ezpdb on crates.io](https://img.shields.io/crates/v/ezpdb.svg)](https://crates.io/crates/ezpdb)
+[![pdbview on crates.io](https://img.shields.io/crates/v/pdbview.svg)](https://crates.io/crates/pdbview)
+
 # pdbview
 
 dumps a lot of information from PDBs
