@@ -960,6 +960,11 @@ impl Typed for Array {
         let mut running_size = self.element_type.as_ref().borrow().type_size(pdb);
 
         for byte_size in &self.dimensions_bytes {
+            // TODO: may be incorrect behavior
+            if running_size == 0 {
+                continue;
+            }
+
             let size = *byte_size / running_size;
 
             self.dimensions_elements.push(size);
