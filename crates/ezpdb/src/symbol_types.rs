@@ -53,6 +53,7 @@ impl ParsedPdb {
     }
 }
 
+#[cfg(feature = "serde")]
 fn serialize_uuid<S: serde::Serializer>(uuid: &uuid::Uuid, s: S) -> Result<S::Ok, S::Error> {
     s.serialize_str(uuid.to_string().as_ref())
 }
