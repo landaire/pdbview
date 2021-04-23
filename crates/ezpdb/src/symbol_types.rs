@@ -24,6 +24,12 @@ pub struct ParsedPdb {
     pub debug_modules: Vec<DebugModule>,
     #[cfg_attr(feature = "serde", serde(skip_serializing))]
     pub(crate) forward_references: Vec<Rc<Type>>,
+    pub version: Version,
+    #[cfg_attr(feature = "serde", serde(serialize_with = "serialize_uuid"))]
+    pub guid: uuid::Uuid,
+    pub age: u32,
+    pub timestamp: u32,
+    pub machine_type: Option<MachineType>,
 }
 
 impl ParsedPdb {
@@ -38,6 +44,131 @@ impl ParsedPdb {
             global_data: vec![],
             debug_modules: vec![],
             forward_references: vec![],
+            version: Version::Other(0),
+            guid: uuid::Uuid::nil(),
+            age: 0,
+            timestamp: 0,
+            machine_type: None,
+        }
+    }
+}
+
+fn serialize_uuid<S: serde::Serializer>(uuid: &uuid::Uuid, s: S) -> Result<S::Ok, S::Error> {
+    s.serialize_str(uuid.to_string().as_ref())
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub enum MachineType {
+    /// The contents of this field are assumed to be applicable to any machine type.
+    Unknown,
+    /// Matsushita AM33
+    Am33,
+    /// x64
+    Amd64,
+    /// ARM little endian
+    Arm,
+    /// ARM64 little endian
+    Arm64,
+    /// ARM Thumb-2 little endian
+    ArmNT,
+    /// EFI byte code
+    Ebc,
+    /// Intel 386 or later processors and compatible processors
+    X86,
+    /// Intel Itanium processor family
+    Ia64,
+    /// Mitsubishi M32R little endian
+    M32R,
+    /// MIPS16
+    Mips16,
+    /// MIPS with FPU
+    MipsFpu,
+    /// MIPS16 with FPU
+    MipsFpu16,
+    /// Power PC little endian
+    PowerPC,
+    /// Power PC with floating point support
+    PowerPCFP,
+    /// MIPS little endian
+    R4000,
+    /// RISC-V 32-bit address space
+    RiscV32,
+    /// RISC-V 64-bit address space
+    RiscV64,
+    /// RISC-V 128-bit address space
+    RiscV128,
+    /// Hitachi SH3
+    SH3,
+    /// Hitachi SH3 DSP
+    SH3DSP,
+    /// Hitachi SH4
+    SH4,
+    /// Hitachi SH5
+    SH5,
+    /// Thumb
+    Thumb,
+    /// MIPS little-endian WCE v2
+    WceMipsV2,
+    /// Invalid value
+    Invalid,
+}
+
+impl From<&pdb::MachineType> for MachineType {
+    fn from(machine_type: &pdb::MachineType) -> Self {
+        match machine_type {
+            pdb::MachineType::Unknown => MachineType::Unknown,
+            pdb::MachineType::Am33 => MachineType::Am33,
+            pdb::MachineType::Amd64 => MachineType::Amd64,
+            pdb::MachineType::Arm => MachineType::Arm,
+            pdb::MachineType::Arm64 => MachineType::Arm64,
+            pdb::MachineType::ArmNT => MachineType::ArmNT,
+            pdb::MachineType::Ebc => MachineType::Ebc,
+            pdb::MachineType::X86 => MachineType::X86,
+            pdb::MachineType::Ia64 => MachineType::Ia64,
+            pdb::MachineType::M32R => MachineType::M32R,
+            pdb::MachineType::Mips16 => MachineType::Mips16,
+            pdb::MachineType::MipsFpu => MachineType::MipsFpu,
+            pdb::MachineType::MipsFpu16 => MachineType::MipsFpu16,
+            pdb::MachineType::PowerPC => MachineType::PowerPC,
+            pdb::MachineType::PowerPCFP => MachineType::PowerPCFP,
+            pdb::MachineType::R4000 => MachineType::R4000,
+            pdb::MachineType::RiscV32 => MachineType::RiscV32,
+            pdb::MachineType::RiscV64 => MachineType::RiscV64,
+            pdb::MachineType::RiscV128 => MachineType::RiscV128,
+            pdb::MachineType::SH3 => MachineType::SH3,
+            pdb::MachineType::SH3DSP => MachineType::SH3DSP,
+            pdb::MachineType::SH4 => MachineType::SH4,
+            pdb::MachineType::SH5 => MachineType::SH5,
+            pdb::MachineType::Thumb => MachineType::Thumb,
+            pdb::MachineType::WceMipsV2 => MachineType::WceMipsV2,
+            pdb::MachineType::Invalid => MachineType::Invalid,
+            other => panic!("unsupported machine type encountered: {:?}", other),
+        }
+    }
+}
+
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+pub enum Version {
+    V41,
+    V50,
+    V60,
+    V70,
+    V110,
+    Other(u32),
+}
+
+impl From<&pdb::HeaderVersion> for Version {
+    fn from(version: &pdb::HeaderVersion) -> Self {
+        match version {
+            pdb::HeaderVersion::V41 => Version::V41,
+            pdb::HeaderVersion::V50 => Version::V50,
+            pdb::HeaderVersion::V60 => Version::V60,
+            pdb::HeaderVersion::V70 => Version::V70,
+            pdb::HeaderVersion::V110 => Version::V110,
+            pdb::HeaderVersion::OtherValue(other) => Version::Other(*other),
+            other => panic!("unsupported PDB version encountered: {:?}", other),
         }
     }
 }

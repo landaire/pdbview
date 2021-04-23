@@ -82,6 +82,7 @@ dependencies = [
  "pdb",
  "serde",
  "thiserror",
+ "uuid",
 ]
 
 [[package]]

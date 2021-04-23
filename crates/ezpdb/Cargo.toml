@@ -13,3 +13,4 @@ pdb = "0.7"
 thiserror = "1.0"
 log = "0.4"
 serde = { version = "1.0", features = ['derive', 'rc'], optional = true }
+uuid = "0.8"

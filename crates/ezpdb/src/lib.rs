@@ -23,9 +23,25 @@ pub fn parse_pdb<P: AsRef<Path>>(
 ) -> Result<ParsedPdb, crate::error::Error> {
     let file = File::open(path.as_ref())?;
     debug!("opening PDB");
-    let mut pdb = Box::new(PDB::open(file)?);
+    let mut pdb = PDB::open(file)?;
 
     let mut output_pdb = ParsedPdb::new(path.as_ref().to_owned());
+    let dbi = pdb.debug_information()?;
+    let pdbi = pdb.pdb_information()?;
+    output_pdb.machine_type = dbi
+        .machine_type()
+        .ok()
+        .map(|machine_type| (&machine_type).into());
+
+    output_pdb.age = match dbi.age() {
+        Some(age) => age,
+        None => pdbi.age,
+    };
+
+    output_pdb.guid = pdbi.guid;
+    output_pdb.timestamp = pdbi.signature;
+    output_pdb.version = (&pdbi.version).into();
+
     debug!("getting address map");
     let address_map = pdb.address_map().ok();
     debug!("grabbing string table");
@@ -40,7 +56,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
             debug!("ID information header was valid");
             let mut id_finder = id_information.finder();
             let mut iter = id_information.iter();
-            while let Some(id) = iter.next()? {
+            while let Some(_id) = iter.next()? {
                 id_finder.update(&iter);
             }
 
