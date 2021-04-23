@@ -8,6 +8,17 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
     // Print header information
     writeln!(output, "{:?}:", &pdb_info.path)?;
 
+    writeln!(output, "PDB Version: {:?}", pdb_info.version)?;
+    writeln!(
+        output,
+        "Machine Type: {}",
+        pdb_info
+            .machine_type
+            .as_ref()
+            .map(|ty| format!("{:?}", ty))
+            .unwrap_or_else(|| "Unknown".to_string())
+    )?;
+
     writeln!(output, "Assembly Info:")?;
 
     writeln!(output, "\tBuild Info:")?;
