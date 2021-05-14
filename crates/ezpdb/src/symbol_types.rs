@@ -486,7 +486,7 @@ impl From<(pdb::PublicSymbol<'_>, usize, Option<&pdb::AddressMap<'_>>)> for Publ
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Data {
     pub name: String,
@@ -552,7 +552,7 @@ impl
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Procedure {
     pub name: String,

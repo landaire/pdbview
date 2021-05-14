@@ -14,7 +14,7 @@ pub trait Typed {
     fn on_complete(&mut self, pdb: &ParsedPdb) {}
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Type {
     Class(Class),
@@ -84,7 +84,7 @@ impl Typed for Type {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct TypeProperties {
     pub packed: bool,
@@ -125,7 +125,7 @@ impl TryFrom<pdb::TypeProperties> for TypeProperties {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Class {
     pub name: String,
@@ -170,6 +170,10 @@ impl TryFrom<FromClass<'_, '_>> for Class {
     type Error = Error;
     fn try_from(info: FromClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
+
+        if class.name.to_string() == "_RNDISDEV_DATA" {
+            panic!("{:#X?}", class);
+        }
 
         let pdb::ClassType {
             kind,
@@ -217,7 +221,7 @@ impl TryFrom<FromClass<'_, '_>> for Class {
         })
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct BaseClass {
     pub kind: ClassKind,
@@ -253,7 +257,7 @@ impl TryFrom<FromBaseClass<'_, '_>> for BaseClass {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct VirtualBaseClass {
     pub direct: bool,
@@ -327,7 +331,7 @@ impl std::fmt::Display for ClassKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Union {
     pub name: String,
@@ -356,6 +360,7 @@ impl Typed for Union {
 
             println!("could not get forward reference for {}", self.name);
         }
+
         self.size
     }
 }
@@ -409,7 +414,7 @@ type FromBitfield<'a, 'b> = (
     &'b pdb::TypeFinder<'a>,
     &'b mut crate::symbol_types::ParsedPdb,
 );
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Bitfield {
     pub underlying_type: TypeRef,
@@ -442,7 +447,7 @@ impl Typed for Bitfield {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Enumeration {
     pub name: String,
@@ -483,7 +488,7 @@ impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct EnumVariant {
     pub name: String,
@@ -510,7 +515,7 @@ impl TryFrom<FromEnumerate<'_, '_>> for EnumVariant {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum VariantValue {
     U8(u8),
@@ -545,7 +550,7 @@ impl TryFrom<&FromVariant> for VariantValue {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Pointer {
     pub underlying_type: Option<TypeRef>,
@@ -628,7 +633,7 @@ impl Typed for PointerKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct PointerAttributes {
     pub kind: PointerKind,
@@ -659,7 +664,7 @@ impl TryFrom<pdb::PointerAttributes> for PointerAttributes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Primitive {
     pub kind: PrimitiveKind,
@@ -690,7 +695,7 @@ impl Typed for Primitive {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub enum Indirection {
     Near16,
@@ -933,7 +938,7 @@ impl std::fmt::Display for PrimitiveKind {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Array {
     pub element_type: TypeRef,
@@ -1009,7 +1014,7 @@ impl TryFrom<FromArray<'_, '_>> for Array {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FieldList(pub Vec<TypeRef>);
 
@@ -1053,7 +1058,7 @@ impl TryFrom<FromFieldList<'_, '_>> for FieldList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct ArgumentList(pub Vec<TypeRef>);
 
@@ -1079,7 +1084,7 @@ impl TryFrom<FromArgumentList<'_, '_>> for ArgumentList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Modifier {
     pub underlying_type: TypeRef,
@@ -1117,7 +1122,7 @@ impl TryFrom<FromModifier<'_, '_>> for Modifier {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Member {
     pub name: String,
@@ -1154,7 +1159,7 @@ impl TryFrom<FromMember<'_, '_>> for Member {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Procedure {
     pub return_type: Option<TypeRef>,
@@ -1203,7 +1208,7 @@ impl TryFrom<FromProcedure<'_, '_>> for Procedure {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct FunctionAttributes {
     pub calling_convention: u8,
@@ -1224,7 +1229,7 @@ impl TryFrom<pdb::FunctionAttributes> for FunctionAttributes {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct MemberFunction {
     pub return_type: TypeRef,
@@ -1286,7 +1291,7 @@ impl TryFrom<FromMemberFunction<'_, '_>> for MemberFunction {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct MethodList(pub Vec<MethodListEntry>);
 
@@ -1311,7 +1316,7 @@ impl TryFrom<FromMethodList<'_, '_>> for MethodList {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct MethodListEntry {
     pub method_type: TypeRef,
@@ -1344,7 +1349,7 @@ impl TryFrom<FromMethodListEntry<'_, '_>> for MethodListEntry {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Nested {
     pub name: String,
@@ -1377,7 +1382,7 @@ impl TryFrom<FromNested<'_, '_>> for Nested {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct OverloadedMethod {
     pub name: String,
@@ -1410,7 +1415,7 @@ impl TryFrom<FromOverloadedMethod<'_, '_>> for OverloadedMethod {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct Method {
     pub name: String,
@@ -1446,7 +1451,7 @@ impl TryFrom<FromMethod<'_, '_>> for Method {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct StaticMember {
     pub name: String,
@@ -1480,7 +1485,7 @@ impl TryFrom<FromStaticMember<'_, '_>> for StaticMember {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(Serialize))]
 pub struct VTable(TypeRef);
 type FromVirtualFunctionTablePointer<'a, 'b> = (
