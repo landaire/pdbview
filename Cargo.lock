@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "ezpdb"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "log",
  "pdb",
@@ -167,7 +167,7 @@ dependencies = [
 
 [[package]]
 name = "pdbview"
-version = "0.3.2"
+version = "0.4.0"
 dependencies = [
  "anyhow",
  "ezpdb",
