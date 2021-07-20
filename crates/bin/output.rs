@@ -396,6 +396,38 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
                     }
                 }
             }
+            Type::Enumeration(e) => {
+                if e.properties.forward_reference {
+                    continue;
+                }
+
+                writeln!(
+                    output,
+                    "\tEnum {} {}",
+                    e.name,
+                    e.unique_name.as_ref().map(String::as_ref).unwrap_or(""),
+                )?;
+                if let Type::Primitive(primitive) = &*e.underlying_type.borrow() {
+                    writeln!(output, "\tSize: 0x{:X}", primitive.size())?;
+                }
+                let underlying_type = e.underlying_type.borrow();
+                writeln!(output, "\tType: {}", format_type_name(&*underlying_type))?;
+                writeln!(output, "\tVariants:")?;
+                for variant in &e.variants {
+                    let value = match variant.value {
+                        VariantValue::U8(v) => v as u64,
+                        VariantValue::U16(v) => v as u64,
+                        VariantValue::U32(v) => v as u64,
+                        VariantValue::U64(v) => v as u64,
+                        VariantValue::I8(v) => v as u64,
+                        VariantValue::I16(v) => v as u64,
+                        VariantValue::I32(v) => v as u64,
+                        VariantValue::I64(v) => v as u64,
+                    };
+
+                    writeln!(output, "\t\t0x{:08X} {}", value, variant.name)?;
+                }
+            }
             _ => {
                 continue;
             }

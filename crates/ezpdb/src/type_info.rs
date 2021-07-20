@@ -171,10 +171,6 @@ impl TryFrom<FromClass<'_, '_>> for Class {
     fn try_from(info: FromClass<'_, '_>) -> Result<Self, Self::Error> {
         let (class, type_finder, output_pdb) = info;
 
-        if class.name.to_string() == "_RNDISDEV_DATA" {
-            panic!("{:#X?}", class);
-        }
-
         let pdb::ClassType {
             kind,
             count,
@@ -454,6 +450,7 @@ pub struct Enumeration {
     pub unique_name: Option<String>,
     pub underlying_type: TypeRef,
     pub variants: Vec<EnumVariant>,
+    pub properties: TypeProperties,
 }
 
 type FromEnumeration<'a, 'b> = (
@@ -474,16 +471,40 @@ impl TryFrom<FromEnumeration<'_, '_>> for Enumeration {
             fields,
             name,
             unique_name,
-        } = e;
+        } = *e;
 
-        let underlying_type = crate::handle_type(*underlying_type, output_pdb, type_finder)?;
-        // TODO: Variants
+        let underlying_type = crate::handle_type(underlying_type, output_pdb, type_finder)?;
+
+        let fields_type = crate::handle_type(fields, output_pdb, type_finder)?;
+
+        let fields;
+        let borrowed_fields = fields_type.as_ref().borrow();
+        match &*borrowed_fields {
+            Type::FieldList(fields_list) => {
+                fields = fields_list.0.clone();
+            }
+            _other => {
+                fields = vec![];
+            }
+        }
+
+        let fields = fields
+            .iter()
+            .map(|field| {
+                if let Type::EnumVariant(var) = &*field.borrow() {
+                    var.clone()
+                } else {
+                    panic!("field {:?} is not an enumvariant", field)
+                }
+            })
+            .collect::<Vec<_>>();
 
         Ok(Enumeration {
             name: name.to_string().into_owned(),
             unique_name: unique_name.map(|s| s.to_string().into_owned()),
             underlying_type,
-            variants: vec![],
+            variants: fields,
+            properties: properties.try_into()?,
         })
     }
 }
@@ -687,11 +708,17 @@ impl TryFrom<&pdb::PrimitiveType> for Primitive {
 
 impl Typed for Primitive {
     fn type_size(&self, pdb: &ParsedPdb) -> usize {
+        self.size()
+    }
+}
+
+impl Primitive {
+    pub fn size(&self) -> usize {
         if let Some(indirection) = self.indirection.as_ref() {
-            return indirection.type_size(pdb);
+            return indirection.size();
         }
 
-        return self.kind.type_size(pdb);
+        return self.kind.size();
     }
 }
 
@@ -726,6 +753,12 @@ impl TryFrom<pdb::Indirection> for Indirection {
 
 impl Typed for Indirection {
     fn type_size(&self, _pdb: &ParsedPdb) -> usize {
+        self.size()
+    }
+}
+
+impl Indirection {
+    pub fn size(&self) -> usize {
         match self {
             Indirection::Near16 | Indirection::Far16 | Indirection::Huge16 => 2,
             Indirection::Near32 | Indirection::Far32 => 4,
@@ -837,6 +870,12 @@ impl TryFrom<&pdb::PrimitiveKind> for PrimitiveKind {
 
 impl Typed for PrimitiveKind {
     fn type_size(&self, _pdb: &ParsedPdb) -> usize {
+        self.size()
+    }
+}
+
+impl PrimitiveKind {
+    pub fn size(&self) -> usize {
         match self {
             PrimitiveKind::NoType | PrimitiveKind::Void => 0,
 
