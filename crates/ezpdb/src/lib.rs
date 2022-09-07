@@ -22,7 +22,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
     base_address: Option<usize>,
 ) -> Result<ParsedPdb, crate::error::Error> {
     let file = File::open(path.as_ref())?;
-    debug!("opening PDB");
+    //debug!("opening PDB");
     let mut pdb = PDB::open(file)?;
 
     let mut output_pdb = ParsedPdb::new(path.as_ref().to_owned());
@@ -42,18 +42,18 @@ pub fn parse_pdb<P: AsRef<Path>>(
     output_pdb.timestamp = pdbi.signature;
     output_pdb.version = (&pdbi.version).into();
 
-    debug!("getting address map");
+    //debug!("getting address map");
     let address_map = pdb.address_map().ok();
-    debug!("grabbing string table");
+    //debug!("grabbing string table");
     let string_table = pdb.string_table().ok();
 
-    debug!("fetching ID information");
+    //debug!("fetching ID information");
     // Some symbols such as build information rely on IDs being known. Iterate these to
     // build the database
     let id_information = pdb.id_information();
     let id_finder = match &id_information {
         Ok(id_information) => {
-            debug!("ID information header was valid");
+            //debug!("ID information header was valid");
             let mut id_finder = id_information.finder();
             let mut iter = id_information.iter();
             while let Some(_id) = iter.next()? {
@@ -68,7 +68,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
         }
     };
 
-    debug!("grabbing type information");
+    //debug!("grabbing type information");
     // Parse type information first. Some symbol info (such as function signatures) depends
     // upon type information, but not vice versa
     let type_information = pdb.type_information()?;
@@ -84,14 +84,14 @@ pub fn parse_pdb<P: AsRef<Path>>(
         let _typ = match handle_type(*typ, &mut output_pdb, &type_finder) {
             Ok(typ) => typ,
             Err(Error::PdbCrateError(e @ pdb::Error::UnimplementedTypeKind(_))) => {
-                warn!("Could not parse type: {}", e);
+                //debug!("Could not parse type: {}", e);
                 continue;
             }
             // TypeNotFound is commonly raised because the PDB spec is not open, so
             // some types are unknown to this crate. We can ignore these and just fail
             // any type depending on something we cannot resolve.
             Err(Error::PdbCrateError(e @ pdb::Error::TypeNotFound(_))) => {
-                warn!("{}", e);
+                //debug!("{}", e);
                 continue;
             }
             Err(e) => return Err(e),
@@ -110,7 +110,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
     //     println!("{:#?}", typ.as_ref().borrow());
     // }
 
-    debug!("grabbing public symbols");
+    //debug!("grabbing public symbols");
     // Parse public symbols
     let symbol_table = pdb.global_symbols()?;
     let mut symbols = symbol_table.iter();
@@ -123,11 +123,11 @@ pub fn parse_pdb<P: AsRef<Path>>(
             id_finder.as_ref(),
             base_address,
         ) {
-            warn!("Error handling symbol {:?}: {}", symbol, e);
+            //debug!("Error handling symbol {:?}: {}", symbol, e);
         }
     }
 
-    debug!("grabbing debug modules");
+    //debug!("grabbing debug modules");
     // Parse private symbols
     let debug_info = pdb.debug_information()?;
     let mut modules = debug_info.modules()?;
@@ -137,11 +137,11 @@ pub fn parse_pdb<P: AsRef<Path>>(
             .debug_modules
             .push((&module, module_info.as_ref(), string_table.as_ref()).into());
         if module_info.is_none() {
-            warn!("Could not get module info for debug module: {:?}", module);
+            //warn!("Could not get module info for debug module: {:?}", module);
             continue;
         }
 
-        debug!("grabbing symbols for module: {}", module.module_name());
+        //debug!("grabbing symbols for module: {}", module.module_name());
         let module_info = module_info.unwrap();
         let mut symbol_iter = module_info.symbols()?;
         while let Some(symbol) = symbol_iter.next()? {
@@ -153,7 +153,7 @@ pub fn parse_pdb<P: AsRef<Path>>(
                 id_finder.as_ref(),
                 base_address,
             ) {
-                warn!("Error handling symbol {:?}: {}", symbol, e);
+                //debug!("Error handling symbol {:?}: {}", symbol, e);
             }
         }
     }
@@ -177,31 +177,31 @@ fn handle_symbol(
 
     match sym {
         SymbolData::Public(data) => {
-            debug!("public symbol: {:?}", data);
+            //debug!("public symbol: {:?}", data);
 
             let converted_symbol: crate::symbol_types::PublicSymbol =
                 (data, base_address, address_map).into();
             output_pdb.public_symbols.push(converted_symbol);
         }
         SymbolData::Procedure(data) => {
-            debug!("procedure: {:?}", data);
+            //debug!("procedure: {:?}", data);
 
             let converted_symbol: crate::symbol_types::Procedure =
                 (data, base_address, address_map, type_finder).into();
             output_pdb.procedures.push(converted_symbol);
         }
         SymbolData::BuildInfo(data) => {
-            debug!("build info: {:?}", data);
+            //debug!("build info: {:?}", data);
             let converted_symbol: crate::symbol_types::BuildInfo = (&data, id_finder).try_into()?;
             output_pdb.assembly_info.build_info = Some(converted_symbol);
         }
         SymbolData::CompileFlags(data) => {
-            debug!("compile flags: {:?}", data);
+            //debug!("compile flags: {:?}", data);
             let sym: crate::symbol_types::CompilerInfo = data.into();
             output_pdb.assembly_info.compiler_info = Some(sym);
         }
         SymbolData::AnnotationReference(annotation) => {
-            debug!("annotation reference: {:?}", annotation);
+            //debug!("annotation reference: {:?}", annotation);
 
             // let sym: crate::symbol_types::AnnotationReference = annotation.try_into()?;
             // output_pdb.annotation_references.push()
@@ -214,7 +214,7 @@ fn handle_symbol(
             }
         }
         other => {
-            warn!("Unhandled SymbolData: {:?}", other);
+            //warn!("Unhandled SymbolData: {:?}", other);
         }
     }
 
@@ -340,7 +340,7 @@ pub(crate) fn handle_type_data(
             Type::VTable(typ)
         }
         other => {
-            warn!("Unhandled type: {:?}", other);
+            //warn!("Unhandled type: {:?}", other);
             panic!("type not handled: {:?}", other);
         }
     };
