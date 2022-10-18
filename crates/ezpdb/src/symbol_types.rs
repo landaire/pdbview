@@ -558,6 +558,7 @@ pub struct Procedure {
     pub name: String,
 
     pub signature: Option<String>,
+    pub type_index: TypeIndexNumber,
 
     pub offset: Option<usize>,
     pub len: usize,
@@ -625,6 +626,7 @@ impl
         Procedure {
             name: name.to_string().to_string(),
             signature,
+            type_index: type_index.0,
             offset,
             len: len as usize,
             is_global: global,
