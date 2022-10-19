@@ -1,6 +1,6 @@
 [package]
 name = "pdbview"
-version = "0.4.0"
+version = "0.5.0"
 authors = ["Lander Brandt <landerbrandt@gmail.com>"]
 edition = "2018"
 license = "MIT"
@@ -20,7 +20,7 @@ pdb = "0.8"
 structopt = "0.3"
 thiserror = "1.0"
 log = "0.4"
-ezpdb = { version = "0.4", path = "crates/ezpdb", features = ['serde'] }
+ezpdb = { version = "0.5", path = "crates/ezpdb", features = ['serde'] }
 simplelog = "0.12"
 anyhow = "1.0"
 serde_json = "1.0"
