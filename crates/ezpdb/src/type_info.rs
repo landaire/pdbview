@@ -5,6 +5,7 @@ use crate::symbol_types::TypeRef;
 use serde::Serialize;
 use std::convert::{From, TryFrom, TryInto};
 use std::rc::Rc;
+use log::warn;
 
 pub trait Typed {
     /// Returns the size (in bytes) of this type
@@ -153,7 +154,7 @@ impl Typed for Class {
                 }
             }
 
-            println!("could not get forward reference for {}", self.name);
+            warn!("could not get forward reference for {}", self.name);
         }
 
         self.size
@@ -354,7 +355,7 @@ impl Typed for Union {
                 }
             }
 
-            println!("could not get forward reference for {}", self.name);
+            warn!("could not get forward reference for {}", self.name);
         }
 
         self.size
