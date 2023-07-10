@@ -209,17 +209,19 @@ impl TryFrom<(&pdb::BuildInfoSymbol, Option<&pdb::IdFinder<'_>>)> for BuildInfo 
                 let argument_ids: Vec<_> = build_info_id
                     .arguments
                     .iter()
-                    .map(|id| finder.find(*id).expect("failed to parse ID"))
-                    .collect();
+                    .map(|id| finder.find(*id))
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 // TODO: Move this out into its own function for ID parsing
                 let arguments: Vec<String> = argument_ids
                     .iter()
-                    .map(|id| match id.parse().expect("failed to parse ID") {
-                        pdb::IdData::String(s) => s.name.to_string().into_owned(),
+                    .map(|id| match id.parse()? {
+                        pdb::IdData::String(s) => {
+                            Ok::<String, Self::Error>(s.name.to_string().into_owned())
+                        }
                         other => panic!("unexpected ID type : {:?}", other),
                     })
-                    .collect();
+                    .collect::<Result<Vec<_>, _>>()?;
 
                 return Ok(BuildInfo { arguments });
             }
