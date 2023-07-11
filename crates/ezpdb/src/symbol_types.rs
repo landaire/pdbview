@@ -562,7 +562,9 @@ pub struct Procedure {
     pub signature: Option<String>,
     pub type_index: TypeIndexNumber,
 
-    pub offset: Option<usize>,
+    /// This reflects the RVA in the transformed address space. See [PdbInternalSectionOffset docs](https://docs.rs/pdb/latest/pdb/struct.PdbInternalSectionOffset.html)
+    /// for more details.
+    pub address: Option<usize>,
     pub len: usize,
 
     pub is_global: bool,
@@ -612,7 +614,7 @@ impl
             )
         }
 
-        let offset = address_map.and_then(|address_map| {
+        let address = address_map.and_then(|address_map| {
             offset
                 .to_rva(address_map)
                 .map(|rva| u32::from(rva) as usize + base_address)
@@ -629,7 +631,7 @@ impl
             name: name.to_string().to_string(),
             signature,
             type_index: type_index.0,
-            offset,
+            address,
             len: len as usize,
             is_global: global,
             is_dpc: dpc,
