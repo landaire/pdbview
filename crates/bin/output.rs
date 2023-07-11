@@ -192,8 +192,8 @@ pub fn print_plain(output: &mut impl Write, pdb_info: &ParsedPdb) -> io::Result<
 
     for procedure in &pdb_info.procedures {
         write!(output, "\t")?;
-        if let Some(offset) = procedure.offset {
-            write!(output, "0x{:08X} ", offset)?;
+        if let Some(address) = procedure.address {
+            write!(output, "0x{:08X} ", address)?;
         } else {
             write!(output, "{:<10} ", "")?;
         }
